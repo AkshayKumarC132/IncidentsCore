@@ -1,0 +1,123 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register</title>
+    <style>
+        /* General body styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9; /* Light background */
+            color: #333; /* Dark text color */
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Container styling */
+        .container {
+            max-width: 400px; /* Maximum width of the form */
+            margin: 50px auto; /* Centering the container */
+            padding: 20px; /* Padding around the form */
+            background-color: #ffffff; /* White background for the form */
+            border-radius: 8px; /* Rounded corners */
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+        }
+
+        /* Heading styles */
+        h2 {
+            text-align: center; /* Center the heading */
+            color: #4A90E2; /* Primary color */
+        }
+
+        /* Form element styles */
+        form {
+            display: flex; /* Use flexbox for form layout */
+            flex-direction: column; /* Stack elements vertically */
+        }
+
+        /* Label styling */
+        label {
+            margin-bottom: 5px; /* Space between label and input */
+            font-weight: bold; /* Make labels bold */
+        }
+
+        /* Input field styling */
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        select {
+            padding: 10px; /* Padding inside the input fields */
+            border: 1px solid #ccc; /* Light gray border */
+            border-radius: 4px; /* Rounded corners */
+            margin-bottom: 15px; /* Space below input fields */
+            font-size: 14px; /* Font size for input fields */
+            transition: border-color 0.3s; /* Transition effect on focus */
+        }
+
+        /* Input focus styling */
+        input[type="text"]:focus,
+        input[type="email"]:focus,
+        input[type="password"]:focus,
+        select:focus {
+            border-color: #4A90E2; /* Change border color on focus */
+            outline: none; /* Remove default outline */
+        }
+
+        /* Button styling */
+        button {
+            padding: 10px; /* Padding for button */
+            background-color: #4A90E2; /* Primary button color */
+            color: white; /* Text color */
+            border: none; /* No border */
+            border-radius: 4px; /* Rounded corners */
+            cursor: pointer; /* Pointer cursor on hover */
+            font-size: 16px; /* Font size */
+            transition: background-color 0.3s; /* Transition effect on hover */
+        }
+
+        /* Button hover styling */
+        button:hover {
+            background-color: #357ABD; /* Darker blue on hover */
+        }
+
+        /* Link styling */
+        a {
+            color: #4A90E2; /* Link color */
+            text-decoration: none; /* Remove underline */
+        }
+
+        a:hover {
+            text-decoration: underline; /* Underline on hover */
+        }
+
+        /* Footer text styling */
+        p {
+            text-align: center; /* Center footer text */
+        }
+
+        
+    </style>
+    {% comment %} <link rel="stylesheet" href="{% static 'styles.css' %}">  <!-- Link to your CSS file --> {% endcomment %}
+</head>
+<body>
+    <div class="container">
+        <h2>Register</h2>
+        <form method="POST" action="{% url 'Signup' %}">
+            {% csrf_token %}
+            <label for="username">Username:</label>
+            <input type="text" name="username" id="username" required>
+            
+            <label for="email">Email:</label>
+            <input type="email" name="email" id="email" required>
+            
+            <label for="password">Password:</label>
+            <input type="password" name="password" id="password" required>
+            
+            <button type="submit">Register</button>
+        </form>
+        <p>Already have an account? <a href="{% url 'Login' %}">Login here</a></p>
+    </div>
+</body>
+</html>

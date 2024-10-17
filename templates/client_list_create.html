@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client List</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; }
+        .container { width: 80%; margin: auto; }
+        h1 { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; text-align: left; border: 1px solid #ddd; }
+        th { background-color: #007BFF; color: white; }
+        .button { padding: 10px 15px; background-color: #28A745; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .button:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Client List for MSP {{ msp_id }}</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for client in clients %}
+                <tr>
+                    <td>{{ client.id }}</td>
+                    <td>{{ client.name }}</td>
+                    <td><a class="button" href="{% url 'client-detail' msp_id client.id %}">View Details</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <a class="button" href="{% url 'client-detail' msp_id 0 %}">Create New Client</a>
+    </div>
+</body>
+</html>

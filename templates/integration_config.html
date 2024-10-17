@@ -1,0 +1,111 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Integration Configuration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        form {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+        }
+
+        input[type="text"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #007BFF;
+            outline: none;
+        }
+
+        button {
+            background-color: #28a745; /* Green button */
+            color: white; /* White text */
+            padding: 10px 15px; /* Padding inside button */
+            border: none; /* Remove default border */
+            border-radius: 4px; /* Rounded corners for button */
+            cursor: pointer; /* Pointer cursor on hover */
+            font-size: 16px; /* Increase font size */
+            transition: background-color 0.3s, transform 0.2s; /* Smooth transitions */
+        }
+
+        button:hover {
+            background-color: #218838; /* Darker green on hover */
+            transform: translateY(-2px); /* Slight lift effect on hover */
+        }
+
+        button:active {
+            transform: translateY(0); /* Reset lift effect on click */
+        }
+    </style>
+</head>
+<body>
+    <h1>Configure Integration</h1>
+    <form method="post" action="{% url 'save_integration_config' %}">
+        {% csrf_token %}
+        
+        <input type="hidden" name="type_id" value="{{ type_id }}">
+        
+        {% if integration_type == 'ConnectWise' %}
+            <h2>ConnectWise Details:</h2>
+            
+            <label for="company_id">Company ID:</label>
+            <input type="text" name="company_id" id="company_id" required>
+
+            <label for="site_url">Site URL:</label>
+            <input type="text" name="site_url" id="site_url" required>
+
+            <label for="public_key">Public Key:</label>
+            <input type="text" name="public_key" id="public_key" required>
+
+            <label for="private_key">Private Key:</label>
+            <input type="text" name="private_key" id="private_key" required>
+
+        {% elif integration_type == 'HaloPSA' %}
+            <h2>HaloPSA Details:</h2>
+
+            <label for="client_id">Client ID:</label>
+            <input type="text" name="client_id" id="client_id" required>
+
+            <label for="client_secret">Client Secret:</label>
+            <input type="text" name="client_secret" id="client_secret" required>
+
+            <label for="instance_url">Instance URL:</label>
+            <input type="text" name="instance_url" id="instance_url" required>
+
+        {% else %}
+            <p>Please select a valid integration type.</p>
+        {% endif %}
+
+        <button type="submit">Save Configuration</button>
+    </form>
+</body>
+</html>

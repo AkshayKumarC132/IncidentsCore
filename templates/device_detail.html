@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Detail</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; }
+        .container { width: 80%; margin: auto; }
+        h1 { text-align: center; }
+        p { margin: 10px 0; }
+        .button { padding: 10px 15px; background-color: #007BFF; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Device Detail</h1>
+        <p><strong>ID:</strong> {{ device.id }}</p>
+        <p><strong>Name:</strong> {{ device.name }}</p>
+        <p><strong>Client ID:</strong> {{ device.client.id }}</p>
+        <a class="button" href="{% url 'device-list-create' device.client.id %}">Back to Device List</a>
+    </div>
+</body>
+</html>

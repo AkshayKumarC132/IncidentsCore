@@ -1,0 +1,51 @@
+<h2 style="font-family: Arial, sans-serif; color: #333; margin-bottom: 20px;text-align: center;">Custom Report Builder</h2>
+
+<form method="POST" action="{% url 'generate_custom_report' %}" style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
+    {% csrf_token %}
+
+    <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+        <div style="flex: 1; margin-right: 10px;">
+            <label for="start_date" style="font-weight: bold;">Start Date:</label>
+            <input type="date" name="start_date" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+        </div>
+
+        <div style="flex: 1; margin-left: 10px;">
+            <label for="end_date" style="font-weight: bold;">End Date:</label>
+            <input type="date" name="end_date" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+        </div>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        <label for="severity" style="font-weight: bold;">Severity:</label>
+        <select name="severity" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+            <option value="all">All</option>
+            {% for severity in severities %}
+                <option value="{{ severity.level }}">{{ severity.level }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        <label for="device_type" style="font-weight: bold;">Device Type:</label>
+        <select name="device_type" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+            <option value="all">All</option>
+            {% for device_type in device_types %}
+                <option value="{{ device_type }}">{{ device_type }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        <label for="resolved" style="font-weight: bold;">Resolved Status:</label>
+        <select name="resolved" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+            <option value="all">All</option>
+            <option value="resolved">Resolved</option>
+            <option value="unresolved">Unresolved</option>
+        </select>
+    </div>
+
+    <div>
+        <button type="submit" style="padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">Generate Report</button>
+        <button type="submit" name="export_csv" style="padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">Export as CSV</button>
+    </div>
+</form>

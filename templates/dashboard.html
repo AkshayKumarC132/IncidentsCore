@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* Inline CSS for the dashboard */
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #2980b9;
+            padding-bottom: 10px;
+            margin-top: 20px;
+        }
+
+        .kpi-container {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+
+        .kpi {
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            width: 22%;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .kpi:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .kpi p {
+            font-size: 2em;
+            margin: 0;
+            color: #2980b9;
+        }
+
+        .table-container {
+            max-height: 300px; /* Adjust this value as needed for your design */
+            overflow-y: auto; /* Enable vertical scrolling */
+            margin-top: 20px;
+            border-radius: 8px;
+            background: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            border: 1px solid #ccc;
+            text-align: left;
+        }
+
+        th {
+            background: #2980b9;
+            color: #ffffff;
+        }
+
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        canvas {
+            max-width: 100%;
+            margin: 20px 0;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0;
+            padding: 10px 0;  /* Added padding for spacing */
+            background: #ffffff;  /* White background for contrast */
+            border-radius: 8px;   /* Rounded corners for aesthetics */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);  /* Light shadow for depth */
+        }
+        
+        .pagination span {
+            margin: 0 15px;  /* Spacing around the page number text */
+            font-size: 1em;  /* Consistent font size */
+            color: #34495e;  /* Darker color for visibility */
+        }
+        
+        .pagination a {
+            margin: 0 5px; 
+            padding: 8px 12px;
+            border: 1px solid #2980b9;
+            color: #2980b9;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background 0.3s, color 0.3s;
+        }
+        
+        .pagination a:hover {
+            background: #2980b9;  /* Hover background color */
+            color: white;  /* Text color on hover */
+        }
+        
+        .pagination a.active {
+            background: #2980b9;  /* Active page color */
+            color: white;  /* Active text color */
+        }
+        
+        .pagination a:disabled {
+            color: #ccc;  /* Disabled state color */
+            border-color: #ccc;  /* Disabled border color */
+            pointer-events: none;  /* Disable clicking */
+        }
+
+        /* Additional styles for responsiveness */
+        @media (max-width: 768px) {
+            .kpi-container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .kpi {
+                width: 80%;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Dashboard Overview</h1>
+
+    <div class="kpi-container">
+        <div class="kpi">
+            <h2>Total Incidents</h2>
+            <p><strong>{{ total_incidents }}</strong></p>
+        </div>
+        <div class="kpi">
+            <h2>Resolved Incidents</h2>
+            <p><strong>{{ resolved_incidents }}</strong></p>
+        </div>
+        <div class="kpi">
+            <h2>Unresolved Incidents</h2>
+            <p><strong>{{ unresolved_incidents }}</strong></p>
+        </div>
+        <div class="kpi">
+            <h2>Avg. Pred. Time (hrs)</h2>
+            <p><strong>{{ avg_resolution_time|floatformat:2 }}</strong></p>
+        </div>
+    </div>
+
+    <div>
+        <h2>Incident Count by Severity</h2>
+        <canvas id="severityChart"></canvas>
+    </div>
+
+    <div>
+        <h2>Incident Details</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Description</th>
+                        <th>Device</th>
+                        <th>Severity</th>
+                        <th>Resolved</th>
+                        <th>Created At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for incident in incident_page_obj %}
+                    <tr>
+                        <td>{{ incident.id }}</td>
+                        <td>{{ incident.title }}</td>
+                        <td>{{ incident.description }}</td>
+                        <td>{{ incident.device.name }}</td>
+                        <td>{{ incident.severity.level }}</td>
+                        <td>{{ incident.resolved }}</td>
+                        <td>{{ incident.created_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination for Incidents -->
+        <div class="pagination">
+            <span>Page {{ incident_page_obj.number }} of {{ incident_page_obj.paginator.num_pages }}</span>
+            {% if incident_page_obj.has_previous %}
+                <a href="?incident_page={{ incident_page_obj.previous_page_number }}">Previous</a>
+            {% endif %}
+        
+            {% for num in incident_page_obj.paginator.page_range %}
+                {% if num > incident_page_obj.number|add:-2 and num < incident_page_obj.number|add:3 %}
+                    <a class="{% if incident_page_obj.number == num %}active{% endif %}" href="?incident_page={{ num }}">{{ num }}</a>
+                {% elif num == 1 or num == incident_page_obj.paginator.num_pages %}
+                    <a href="?incident_page={{ num }}">{{ num }}</a>
+                {% elif num == incident_page_obj.number|add:-3 or num == incident_page_obj.number|add:3 %}
+                    <span>...</span>
+                {% endif %}
+            {% endfor %}
+        
+            {% if incident_page_obj.has_next %}
+                <a href="?incident_page={{ incident_page_obj.next_page_number }}">Next</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% comment %} <div>
+        <h2>Device Details</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Device Type</th>
+                        <th>Client</th>
+                        <th>MSP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for device in device_page_obj %}
+                    <tr>
+                        <td>{{ device.id }}</td>
+                        <td>{{ device.name }}</td>
+                        <td>{{ device.device_type }}</td>
+                        <td>{{ device.client.name }}</td>
+                        <td>{{ device.client.msp.name }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination for Devices -->
+        <div class="pagination">
+            <span>Page {{ device_page_obj.number }} of {{ device_page_obj.paginator.num_pages }}</span>
+            {% if device_page_obj.has_previous %}
+                <a href="?device_page={{ device_page_obj.previous_page_number }}">Previous</a>
+            {% endif %}
+            {% for num in device_page_obj.paginator.page_range %}
+                {% if device_page_obj.number == num %}
+                    <a class="active" href="#">{{ num }}</a>
+                {% else %}
+                    <a href="?device_page={{ num }}">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+            {% if device_page_obj.has_next %}
+                <a href="?device_page={{ device_page_obj.next_page_number }}">Next</a>
+            {% endif %}
+        </div>
+    </div> {% endcomment %}
+
+    <script>
+        var ctx = document.getElementById('severityChart').getContext('2d');
+        var severityData = {
+            labels: [{% for severity in severity_counts %}'{{ severity.severity__level }}',{% endfor %}],
+            datasets: [{
+                label: 'Incident Count by Severity',
+                data: [{% for severity in severity_counts %}{{ severity.count }},{% endfor %}],
+                backgroundColor: ['rgba(255, 99, 132, 0.2)', 'rgba(54, 162, 235, 0.2)', 'rgba(255, 206, 86, 0.2)'],
+                borderColor: ['rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)', 'rgba(255, 206, 86, 1)'],
+                borderWidth: 1
+            }]
+        };
+        var severityChart = new Chart(ctx, {
+            type: 'bar',
+            data: severityData,
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Incidents'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Severity Levels'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
