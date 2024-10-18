@@ -5,6 +5,7 @@ charset-normalizer==3.3.2
 cryptography==43.0.1
 defusedxml==0.7.1
 Django==5.1.1
+django-cors-headers==4.5.0
 django-rest-auth==0.9.5
 django-saml2-auth==2.2.1
 djangorestframework==3.15.2

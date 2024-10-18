@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-544!p1hn*4-5wf2)b+y+(t8$w)8p)sh4o!fu^^ecdg@$%ddbgs'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*','127.0.0.1','localhost']
 
@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     
     'core',
     'rest_framework',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
@@ -52,6 +53,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.common.CommonMiddleware',
 ]
 
 ROOT_URLCONF = 'incidentmanagement.urls'
@@ -81,8 +84,8 @@ WSGI_APPLICATION = 'incidentmanagement.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+        'NAME': BASE_DIR / 'default.sqlite3',
+    },
 }
 
 
@@ -137,3 +140,40 @@ HaloPSAAPIUrl = "https://xamplify.halopsa.com/api"
 TestConnectWiseCredentialsViaURL = "https://api-staging.connectwisedev.com/v2022_2/apis/3.0/service/tickets"
 
 TestHaloPSACredentialsViaURL = "https://xamplify.halopsa.com/auth/token"
+
+
+SECURE_CROSS_ORIGIN_OPENER_POLICY=None
+
+# Value determines whether the server allows cookies in the cross-site HTTP requests
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = True  # Use this for development
+
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:4200",
+#     "http://127.0.0.1:5000",
+# ]
+
+# Methods allowed for CORS
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'OPTIONS',
+    'PATCH',
+    'GET',
+    'POST',
+    'PUT',  
+]
+
+# Non-standard headers allowed in the request
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+APPEND_SLASH=False

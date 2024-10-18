@@ -13,8 +13,8 @@ class OrchestrationLayer:
         return "No agent could handle the incident"
 
 # Example usage
-from NetworkAgent import NetworkAgent
-from HardwareAgent import HardwareAgent
+from agents.NetworkAgent import NetworkAgent
+from agents.HardwareAgent import HardwareAgent
 
 incident_data = {'type': 'network_outage', 'details': 'Router failure'}
 network_agent = NetworkAgent(incident_data)

@@ -31,6 +31,8 @@ from incidentmanagement.settings import TestConnectWiseCredentialsViaURL,TestHal
 import requests
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
 
 # # Create or get the record for 'ConnectWise'
 # IntegrationType.objects.get_or_create(id=1, defaults={'name': 'ConnectWise'})
@@ -217,7 +219,7 @@ def save_integration_config(request):
                             devices_data = device_response.json()['assets']
                             
                             for device_data in devices_data:
-                                device_name = device_data['inventory_number'] + device_data['key_field']
+                                device_name = device_data['inventory_number'] + ' ' + device_data['key_field']
                                 
                                 # Get or create the device associated with the client
                                 device, created = Device.objects.update_or_create(
@@ -294,3 +296,54 @@ def dashboard_view(request):
     }
 
     return render(request, 'dashboard.html', context)
+
+
+# UserProfile ViewSet
+# class UserProfileViewSet(viewsets.ModelViewSet):
+#     queryset = UserProfile.objects.all()
+#     serializer_class = UserProfileSerializer
+
+
+# IntegrationType ViewSet
+class IntegrationTypeViewSet(viewsets.ModelViewSet):
+    queryset = IntegrationType.objects.all()
+    serializer_class = IntegrationTypeSerializer
+    permission_classes = [IsAuthenticated]
+
+
+# IntegrationMSPConfig ViewSet
+class IntegrationMSPConfigViewSet(viewsets.ModelViewSet):
+    queryset = IntegrationMSPConfig.objects.all()
+    serializer_class = IntegrationMSPConfigSerializer
+    permission_classes = [IsAuthenticated]
+
+
+# Client ViewSet
+class ClientViewSet(viewsets.ModelViewSet):
+    queryset = Client.objects.all()
+    serializer_class = ClientSerializer
+
+# Device ViewSet
+class DeviceViewSet(viewsets.ModelViewSet):
+    queryset = Device.objects.all()
+    serializer_class = DeviceSerializer
+
+# Severity ViewSet
+class SeverityViewSet(viewsets.ModelViewSet):
+    queryset = Severity.objects.all()
+    serializer_class = SeveritySerializer
+
+# Incident ViewSet
+class IncidentViewSet(viewsets.ModelViewSet):
+    queryset = Incident.objects.all()
+    serializer_class = IncidentSerializer
+
+# Agent ViewSet
+class AgentViewSet(viewsets.ModelViewSet):
+    queryset = Agent.objects.all()
+    serializer_class = AgentSerializer
+
+# Task ViewSet
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
