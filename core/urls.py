@@ -8,7 +8,8 @@ from .views import (
     SeverityViewSet, 
     IncidentViewSet, 
     AgentViewSet, 
-    TaskViewSet
+    TaskViewSet,
+    dashboard_summary
 )
 
 router = DefaultRouter()
@@ -27,4 +28,5 @@ urlpatterns = [
     path('integration-config/<int:type_id>/', views.integration_config, name='integration_config'),  # Configuration view for specific integration type
     path('save-integration-config/', views.save_integration_config, name='save_integration_config'),  # Save configuration endpoint
     path('dashboard/', views.dashboard_view, name='dashboard'),
+    path('dashboard-summary/', dashboard_summary, name='dashboard_summary'),
 ]

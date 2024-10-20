@@ -347,3 +347,31 @@ class AgentViewSet(viewsets.ModelViewSet):
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
+
+@api_view(['GET'])
+def dashboard_summary(request):
+    # Fetch total number of customers
+    total_customers = Client.objects.count()
+
+    # Fetch total number of devices
+    total_devices = Device.objects.count()
+
+    # Fetch number of active incidents (assuming 'resolved' is a boolean field)
+    active_incidents = Incident.objects.filter(resolved=False).count()
+
+    # Fetch number of resolved incidents
+    resolved_incidents = Incident.objects.filter(resolved=True).count()
+    
+    # Incident Data 
+    incident_data = Incident.objects.all().values()
+
+    # Return the data as a dictionary
+    data = {
+        'total_customers': total_customers,
+        'total_devices': total_devices,
+        'active_incidents': active_incidents,
+        'resolved_incidents': resolved_incidents,
+        "incident_data" : incident_data
+    }
+
+    return Response(data)
