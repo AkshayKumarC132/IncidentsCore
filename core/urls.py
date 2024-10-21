@@ -9,7 +9,11 @@ from .views import (
     IncidentViewSet, 
     AgentViewSet, 
     TaskViewSet,
-    dashboard_summary
+    dashboard_summary,
+    UserProfileViewSet,
+    TeamViewSet,
+    register,
+    LogoutViewAPI
 )
 
 router = DefaultRouter()
@@ -19,11 +23,15 @@ router.register(r'severities', SeverityViewSet)
 router.register(r'incidents', IncidentViewSet)
 router.register(r'agents', AgentViewSet)
 router.register(r'tasks', TaskViewSet)
+router.register(r'users', UserProfileViewSet)
+router.register(r'teams', TeamViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('register/', RegisterViewAPI.as_view(), name='Signup'),
+    path('register/', register, name='Signup'),
+    # path('register/', RegisterViewAPI.as_view(), name='Signup'),
     path('login/', LoginViewAPI.as_view(), name='Login'),
+    path('logout/', LogoutViewAPI.as_view(), name='logout'),  # Logout
     path('select-integration-type/', views.select_integration_type, name='select_integration_type'),  # Select integration type view
     path('integration-config/<int:type_id>/', views.integration_config, name='integration_config'),  # Configuration view for specific integration type
     path('save-integration-config/', views.save_integration_config, name='save_integration_config'),  # Save configuration endpoint

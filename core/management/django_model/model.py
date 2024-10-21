@@ -4,13 +4,21 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
-# User Profile
+# User Profile with role selection
 class UserProfile(AbstractUser):
     id = models.AutoField(primary_key=True, db_column='user_id')
     name = models.CharField(max_length=100, null=True)
     is_active = models.BooleanField(db_column='is_active', default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Role field for different types of users
+    ROLE_CHOICES = [
+        ('admin', 'Admin'),
+        ('msp_superuser', 'MSP SuperUser'),
+        ('msp_user', 'MSP User'),
+    ]
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='msp_user')
 
     class Meta:
         db_table = "user_profile"
@@ -45,6 +53,16 @@ class IntegrationMSPConfig(models.Model):
         db_table = "msp_config"
         unique_together = ('user', 'type')
 
+# Teams for MSPs
+class Team(models.Model):
+    name = models.CharField(max_length=255)
+    msp = models.ForeignKey('IntegrationMSPConfig', on_delete=models.CASCADE)
+    members = models.ManyToManyField(UserProfile, related_name='teams')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def _str_(self):
+        return self.name
 
 # Client Model (Extended with email and phone)
 class Client(models.Model):

@@ -30,9 +30,15 @@ import base64
 from incidentmanagement.settings import TestConnectWiseCredentialsViaURL,TestHaloPSACredentialsViaURL,ConnectWiseClientId
 import requests
 from django.http import JsonResponse
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view,permission_classes
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth.hashers import make_password
+from django.db import IntegrityError  # Importing IntegrityError to handle duplicate entries
+from rest_framework.authtoken.models import Token
+from rest_framework.permissions import AllowAny
+
+
 
 # # Create or get the record for 'ConnectWise'
 # IntegrationType.objects.get_or_create(id=1, defaults={'name': 'ConnectWise'})
@@ -66,12 +72,14 @@ class RegisterViewAPI(APIView):
 
 class LoginViewAPI(APIView):
     serializer_class = LoginSerialzier
+    permission_classes = [AllowAny]  # Allow anyone to access this view
     
     def get(self, request):
+        print("here")
         # Render the login page
         return render(request, 'login.html')
 
-    @csrf_exempt
+    # @csrf_exempt
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid(raise_exception=True):
@@ -81,12 +89,33 @@ class LoginViewAPI(APIView):
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                profile = UserProfile.objects.get(username = username)
-                if IntegrationMSPConfig.objects.filter(user = profile).exists():
-                    return redirect('/api/dashboard')
-                return redirect('/api/select-integration-type/')  # Adjust the URL as needed
+                # Get or create the token for the user
+                token, created = Token.objects.get_or_create(user=user)
+                
+                profile = UserProfile.objects.filter(username = username).values()
+                return Response(
+                    {
+                        'message':"Login Successfull",
+                        "data":profile,
+                        'token': token.key,  # Return the token
+                    }
+                )
             else:
                 return Response({'message': "Invalid username or password"}, status=status.HTTP_401_UNAUTHORIZED)
+
+class LogoutViewAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            # Get the token from the request
+            token = request.auth
+            # Check if the token exists
+            if token:
+                token.delete()  # Delete the token
+            return Response({'message': 'Logout successful.'})
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
 
 @login_required
 def select_integration_type(request):
@@ -255,6 +284,75 @@ def save_integration_config(request):
 
     return HttpResponse("Invalid request method.", status=405)
 
+# Register user with role
+@api_view(['POST'])
+def register(request):
+    required_fields = ['username', 'email', 'password', 'name']
+
+    # Check if required fields are present and not empty
+    missing_or_empty_fields = [
+        field for field in required_fields
+        if field not in request.data or not request.data[field].strip()
+    ]
+
+    if missing_or_empty_fields:
+        return Response(
+            {"error": f"Fields cannot be null or empty: {', '.join(missing_or_empty_fields)}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Extracting fields
+    username = request.data['username']
+    email = request.data['email']
+    password = request.data['password']
+    name = request.data['name']
+    role = request.data.get('role', 'msp_user')  # Default to 'msp_user' if not provided
+
+    # Validate if role is one of the allowed choices
+    allowed_roles = ['admin', 'msp_superuser', 'msp_user']
+    if role not in allowed_roles:
+        return Response(
+            {"error": f"Invalid role. Allowed roles are: {', '.join(allowed_roles)}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    if UserProfile.objects.filter(email = email).exists():
+        return Response(
+            {"error": "Email already exists. Please choose a different email."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Creating the user profile
+        user = UserProfile.objects.create_user(
+            username=username,
+            email=email,
+            password=(password),
+            name=name,
+            role=role,
+            is_active=True  # Assuming user is active upon registration
+        )
+        user.save()
+
+    except IntegrityError as e:
+        if 'user_profile.username' in str(e):
+            return Response(
+                {"error": "Username already exists. Please choose a different username."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if 'user_profile.email' in str(e):
+            return Response(
+                {"error": "Email already exists. Please choose a different email."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(
+            {"error": "An error occurred during registration."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    # Serialize and return the newly created user profile
+    serializer = UserProfileSerializer(user)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 @login_required(login_url='/account/login/')
 def dashboard_view(request):
     # Fetch the user's profile to filter incidents and devices
@@ -327,6 +425,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 class DeviceViewSet(viewsets.ModelViewSet):
     queryset = Device.objects.all()
     serializer_class = DeviceSerializer
+    permission_classes = [IsAuthenticated]
 
 # Severity ViewSet
 class SeverityViewSet(viewsets.ModelViewSet):
@@ -337,6 +436,7 @@ class SeverityViewSet(viewsets.ModelViewSet):
 class IncidentViewSet(viewsets.ModelViewSet):
     queryset = Incident.objects.all()
     serializer_class = IncidentSerializer
+    permission_classes = [IsAuthenticated]
 
 # Agent ViewSet
 class AgentViewSet(viewsets.ModelViewSet):
@@ -349,21 +449,36 @@ class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def dashboard_summary(request):
-    # Fetch total number of customers
-    total_customers = Client.objects.count()
+    print(request)
+    # Ensure the user is authenticated
+    if not request.user.is_authenticated:
+        return Response({'error': 'User not authenticated'}, status=401)
 
-    # Fetch total number of devices
-    total_devices = Device.objects.count()
+    # Get the user profile
+    user_profile = request.user
 
-    # Fetch number of active incidents (assuming 'resolved' is a boolean field)
-    active_incidents = Incident.objects.filter(resolved=False).count()
+    # Fetch the user's MSP configuration
+    try:
+        msp_config = IntegrationMSPConfig.objects.get(user=user_profile)
+    except IntegrationMSPConfig.DoesNotExist:
+        return Response({'error': 'MSP configuration not found for this user'}, status=404)
 
-    # Fetch number of resolved incidents
-    resolved_incidents = Incident.objects.filter(resolved=True).count()
+    # Fetch total number of customers for the user's MSP
+    total_customers = Client.objects.filter(msp=msp_config).count()
+
+    # Fetch total number of devices for the user's MSP
+    total_devices = Device.objects.filter(client__msp=msp_config).count()
+
+    # Fetch number of active incidents for the user's MSP
+    active_incidents = Incident.objects.filter(device__client__msp=msp_config, resolved=False).count()
+
+    # Fetch number of resolved incidents for the user's MSP
+    resolved_incidents = Incident.objects.filter(device__client__msp=msp_config, resolved=True).count()
     
-    # Incident Data 
-    incident_data = Incident.objects.all().values()
+    # Fetch incident data for the user's MSP
+    incident_data = Incident.objects.filter(device__client__msp=msp_config).values()
 
     # Return the data as a dictionary
     data = {
@@ -371,7 +486,18 @@ def dashboard_summary(request):
         'total_devices': total_devices,
         'active_incidents': active_incidents,
         'resolved_incidents': resolved_incidents,
-        "incident_data" : incident_data
+        'incident_data': list(incident_data)  # Convert to list for JSON serialization
     }
 
     return Response(data)
+
+class UserProfileViewSet(viewsets.ModelViewSet):
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class TeamViewSet(viewsets.ModelViewSet):
+    queryset = Team.objects.all()
+    serializer_class = TeamSerializer
+    permission_classes = [IsAuthenticated]

@@ -25,6 +25,18 @@ class MSPSerializer(serializers.ModelSerializer):
 #         model = UserProfile
 #         fields = ['id', 'username', 'email', 'is_active','password']
 
+# User Profile Serializer
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['id', 'username', 'email', 'name', 'role', 'is_active', 'created_at']
+        
+class TeamSerializer(serializers.ModelSerializer):
+    members = UserProfileSerializer(many=True)
+
+    class Meta:
+        model = Team
+        fields = ['id', 'name', 'msp', 'members', 'created_at', 'updated_at']
 
 # IntegrationType Serializer
 class IntegrationTypeSerializer(serializers.ModelSerializer):
