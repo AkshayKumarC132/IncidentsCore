@@ -70,6 +70,7 @@ class Client(models.Model):
     email = models.EmailField(blank=True, null=True)  # Added email field
     phone = models.CharField(max_length=20, blank=True, null=True)  # Added phone field
     msp = models.ForeignKey(IntegrationMSPConfig, on_delete=models.CASCADE)
+    team_member = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name="clients")  # New field to assign a team member
     created_at = models.DateTimeField(auto_now_add=True)
 
     def _str_(self):

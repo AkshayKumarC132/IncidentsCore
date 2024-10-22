@@ -14,7 +14,6 @@ from django.contrib.auth.decorators import login_required
 from rest_framework import generics, permissions
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
-from .serializers import MSPSerializer
 from rest_framework.views import APIView
 from django.db.models import Avg,Count
 from django.shortcuts import render
@@ -30,7 +29,7 @@ import base64
 from incidentmanagement.settings import TestConnectWiseCredentialsViaURL,TestHaloPSACredentialsViaURL,ConnectWiseClientId
 import requests
 from django.http import JsonResponse
-from rest_framework.decorators import api_view,permission_classes
+from rest_framework.decorators import api_view,permission_classes,action
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.hashers import make_password
@@ -75,7 +74,6 @@ class LoginViewAPI(APIView):
     permission_classes = [AllowAny]  # Allow anyone to access this view
     
     def get(self, request):
-        print("here")
         # Render the login page
         return render(request, 'login.html')
 
@@ -420,6 +418,19 @@ class IntegrationMSPConfigViewSet(viewsets.ModelViewSet):
 class ClientViewSet(viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=True, methods=['post'])
+    def assign_team_member(self, request, pk=None):
+        client = self.get_object()
+        try:
+            # Fetch the team member by ID
+            team_member = UserProfile.objects.get(id=request.data['team_member_id'])
+            client.team_member = team_member  # Assuming the Client model has a team_member field
+            client.save()
+            return Response({'status': 'Team member assigned'})
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'Team member not found'}, status=404)
 
 # Device ViewSet
 class DeviceViewSet(viewsets.ModelViewSet):
@@ -451,7 +462,6 @@ class TaskViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_summary(request):
-    print(request)
     # Ensure the user is authenticated
     if not request.user.is_authenticated:
         return Response({'error': 'User not authenticated'}, status=401)
@@ -501,3 +511,80 @@ class TeamViewSet(viewsets.ModelViewSet):
     queryset = Team.objects.all()
     serializer_class = TeamSerializer
     permission_classes = [IsAuthenticated]
+
+    @action(detail=True, methods=['post'])
+    def add_member(self, request, pk=None):
+        team = self.get_object()
+        user = UserProfile.objects.get(id=request.data['user_id'])
+        team.members.add(user)
+        team.save()
+        return Response({'status': 'Member added'})
+
+    @action(detail=True, methods=['post'])
+    def remove_member(self, request, pk=None):
+        team = self.get_object()
+        user = UserProfile.objects.get(id=request.data['user_id'])
+        team.members.remove(user)
+        team.save()
+        return Response({'status': 'Member removed'})
+
+class DashboardData(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        data = {}
+        
+        # Add user role to the response
+        data['role'] = user.role  # Include this line
+
+        # Check user role
+        if user.role == 'admin':  # Admin
+            data['total_customers'] = Client.objects.count()
+            data['total_devices'] = Device.objects.count()
+            data['active_incidents'] = Incident.objects.filter(resolved=False).count()
+            data['resolved_incidents'] = Incident.objects.filter(resolved=True).count()
+            data['incident_data'] = list(Incident.objects.all().values())
+
+        elif user.role == 'msp_superuser':  # MSP SuperUser
+            # Get the MSP configuration associated with the user
+            msp_config = user.integrationmspconfig_set.first()
+
+            if msp_config:
+                # Fetch clients related to this MSP
+                clients = Client.objects.filter(msp=msp_config)
+                data['total_customers'] = clients.count()
+
+                # Fetch devices related to the clients
+                devices = Device.objects.filter(client__in=clients)
+                data['total_devices'] = devices.count()
+
+                # Fetch incidents related to the devices of these clients
+                data['active_incidents'] = Incident.objects.filter(resolved=False, device__client__in=clients).count()
+                data['resolved_incidents'] = Incident.objects.filter(resolved=True, device__client__in=clients).count()
+                data['incident_data'] = list(Incident.objects.filter(device__client__in=clients).values())
+
+        else:  # MSP User
+            # Fetch clients associated with the MSP user
+            clients = Client.objects.filter(msp__user=user)
+            data['total_customers'] = clients.count()
+
+            # Fetch devices related to the clients
+            devices = Device.objects.filter(client__in=clients)
+            data['total_devices'] = devices.count()
+
+            # Fetch incidents related to the devices of these clients
+            data['active_incidents'] = Incident.objects.filter(resolved=False, device__client__in=clients).count()
+            data['resolved_incidents'] = Incident.objects.filter(resolved=True, device__client__in=clients).count()
+            data['incident_data'] = list(Incident.objects.filter(device__client__in=clients).values())
+
+        return Response(data)
+
+class MspViewSet(viewsets.ReadOnlyModelViewSet):  # Use ReadOnlyModelViewSet for GET requests
+    queryset = IntegrationMSPConfig.objects.all()  # You can filter by user if necessary
+    serializer_class = MspSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Optionally filter by the current user
+        return IntegrationMSPConfig.objects.filter(user=self.request.user)
