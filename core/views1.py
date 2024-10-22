@@ -648,11 +648,12 @@ class IncidentManagementAPI(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        print(request.data)
         # Extract data from request
         title = request.data.get('title')
         description = request.data.get('description')
         severity = request.data.get('severity')
-        device_id = request.data.get('device_id')
+        device_id = request.data.get('deviceId')
         recommended_solutions = request.data.get('recommended_solutions', '')
         predicted_resolution_time = request.data.get('predicted_resolution_time', None)
 
@@ -665,6 +666,7 @@ class IncidentManagementAPI(APIView):
 
         # Get the device object
         device = get_object_or_404(Device, id=device_id)
+        severity = get_object_or_404(Severity, level=severity)
 
         # Create the incident
         incident = Incident.objects.create(
@@ -801,3 +803,12 @@ def get_team_members(request):
     team_members = UserProfile.objects.filter(teams__in=teams).distinct()  # Fetch members of those teams
     serializer = UserProfileSerializer(team_members, many=True)
     return Response(serializer.data)
+
+class SeverityAPI(APIView):
+    permission_classes = [IsAuthenticated]  # Only authenticated users can access this API
+
+    def get(self, request):
+        # Fetch all severity levels from the database
+        severities = Severity.objects.all()
+        serializer = SeveritySerializer(severities, many=True)
+        return Response(serializer.data)

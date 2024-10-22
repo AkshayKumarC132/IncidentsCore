@@ -64,4 +64,6 @@ urlpatterns = [
     
     path('api/assign-clients/', views1.AssignClientsToTeamMembers.as_view(), name='assign_clients'),
     path('api/team-members/', views1.get_team_members, name='get_team_members'),
+    
+    path('severities/', views1.SeverityAPI.as_view(), name='severity-list'),  # Add this line
 ]
