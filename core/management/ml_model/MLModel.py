@@ -4,7 +4,7 @@
 import joblib
 
 class MLModel:
-    def _init_(self, model_path, label_encoder_path):
+    def __init__(self, model_path, label_encoder_path):
         self.model = joblib.load(model_path)
         self.label_encoder = joblib.load(label_encoder_path)
 

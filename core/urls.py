@@ -66,4 +66,8 @@ urlpatterns = [
     path('api/team-members/', views1.get_team_members, name='get_team_members'),
     
     path('severities/', views1.SeverityAPI.as_view(), name='severity-list'),  # Add this line
+    
+    path('connectwise/setup/', views1.connectwise_setup, name='connectwise_setup'),
+    path('halopsa/setup/', views1.halopsa_setup, name='halopsa_setup'),
+    path('fetch-data/', views1.fetch_data, name='fetch_data'),
 ]
