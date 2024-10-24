@@ -12,14 +12,37 @@ class SecurityAgent:
 
     def callback(self, ch, method, properties, body):
         task_data = json.loads(body)
+        print(f"Received task_data: {task_data}")
+        
         if task_data['agent_type'] == 'security':
-            print(f"Security agent processing task: {task_data}")
             self.process_task(task_data)
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def process_task(self, task_data):
         print(f"Performing task: {task_data['task_description']} for incident {task_data['incident_id']}")
-        # Implement security-specific task processing logic here
+        
+        # Severity handling
+        severity = task_data.get('severity')
+        
+        if severity == "Critical":
+            print(f"Critical security task detected! Prioritizing task for incident {task_data['incident_id']}")
+            # Handle critical tasks differently if needed
+        elif severity == "High":
+            print(f"High priority security task for incident {task_data['incident_id']}")
+        elif severity == "Medium":
+            print(f"Medium priority security task for incident {task_data['incident_id']}")
+        else:
+            print(f"Low priority security task for incident {task_data['incident_id']}")
+        
+        # Security-specific task processing logic
+        if "vulnerability scan" in task_data['task_description'].lower():
+            print(f"Running vulnerability scan for incident {task_data['incident_id']}")
+            # Simulate running a vulnerability scan
+        elif "fix security" in task_data['task_description'].lower():
+            print(f"Fixing security issue for incident {task_data['incident_id']}")
+            # Simulate fixing a security issue
+        else:
+            print(f"Performing general security maintenance for incident {task_data['incident_id']}")
 
     def start_listening(self):
         print("Security Agent waiting for tasks...")

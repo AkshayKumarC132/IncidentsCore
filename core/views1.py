@@ -882,7 +882,7 @@ def validate_connectwise_credentials(data):
     return response.status_code == 200, response.json()
 
 @csrf_exempt
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def connectwise_setup(request):
     if request.method == 'POST':
@@ -925,6 +925,29 @@ def connectwise_setup(request):
             return JsonResponse({'error': f'Missing key: {str(e)}'}, status=400)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+    elif request.method == 'GET':
+        try:
+            # Retrieve ConnectWise configuration for the authenticated user
+            type = IntegrationType.objects.get(name = 'ConnectWise')
+            config = IntegrationMSPConfig.objects.filter(user=request.user, type=type).first()
+
+            if config:
+                return JsonResponse({
+                    "status": "success",
+                    "data": {
+                        "instance_url": config.instance_url,
+                        "company_id": config.company_id,
+                        "client_id": config.client_id,
+                        "public_key": config.public_key,
+                        # Do not return sensitive data such as private_key in the response
+                    }
+                })
+            else:
+                return JsonResponse({"status": "failed", "message": "No ConnectWise configuration found"}, status=404)
+
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=405)
 
