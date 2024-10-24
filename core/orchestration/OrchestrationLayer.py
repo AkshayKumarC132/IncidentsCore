@@ -27,12 +27,12 @@ class OrchestrationLayer:
         """Map an incident to the appropriate agent based on the severity or type."""
         severity_level = incident.severity.level  # Now using Django ORM relationships
 
-        # You can determine the agent type based on keywords in the title/description
-        if "network" in incident.title.lower() or "network" in incident.description.lower():
+        # You can determine the agent type based on keywords in the title/description/recommended_solution
+        if "network" in incident.title.lower() or "network" in incident.description.lower() or "network" in incident.recommended_solution.lower():
             return 'network'
-        elif "security" in incident.title.lower() or "security" in incident.description.lower():
+        elif "security" in incident.title.lower() or "security" in incident.description.lower() or "security" in incident.recommended_solution.lower():
             return 'security'
-        elif "hardware" in incident.title.lower() or "hardware" in incident.description.lower():
+        elif "hardware" in incident.title.lower() or "hardware" in incident.description.lower() or "hardware" in incident.recommended_solution.lower():
             return 'hardware'
         else:
             return 'software'  # Default to software if no match found
