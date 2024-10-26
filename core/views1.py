@@ -1234,3 +1234,56 @@ def fetch_data(request):
             fetch_halopsa_data(config)
     
     return JsonResponse({"status": "success", "message": "Data fetched successfully"})
+
+
+class IncidentsByStatus(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, status):
+        
+        user = request.user
+        # Check if the status is 'active' or 'resolved'
+        if status == 'active':
+            incidents = Incident.objects.filter(resolved=False)
+        else:
+            incidents = Incident.objects.filter(resolved=True)
+        
+        # If user is an MSP Superuser or User, restrict the data to their clients
+        if user.role == 'msp_superuser' or user.role == 'msp_user':
+            # msp_config = IntegrationMSPConfig.objects.filter(user=request.user)
+            msp_config =  user.integrationmspconfig_set.first()
+            if msp_config:
+                clients = Client.objects.filter(msp=msp_config)
+                incidents = incidents.filter(device__client__in=clients)
+
+        # Prepare the response data
+        incident_data = list(incidents.select_related('device', 'severity').values(
+            'title', 'device__name', 'severity__level', 'resolved'
+        ))
+
+        return Response(incident_data)
+    
+    
+class IncidentsBySeverity(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, severity):
+        # Get the user's associated devices
+        user_devices = Device.objects.filter(client__msp__user=request.user)
+
+        # Filter incidents by severity and user's devices
+        incidents = Incident.objects.filter(severity__level=severity, device__in=user_devices)
+        incident_data = list(incidents.values('title', 'device__name', 'severity__level', 'resolved'))
+        return Response(incident_data)
+
+class IncidentsByDevice(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, device):
+        # Get the user's associated devices
+        user_devices = Device.objects.filter(client__msp__user=request.user)
+
+        # Filter incidents by device name and user's devices
+        incidents = Incident.objects.filter(device__name=device, device__in=user_devices)
+        incident_data = list(incidents.values('title', 'device__name', 'severity__level', 'resolved'))
+        return Response(incident_data)

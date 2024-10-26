@@ -70,4 +70,9 @@ urlpatterns = [
     path('connectwise/setup/', views1.connectwise_setup, name='connectwise_setup'),
     path('halopsa/setup/', views1.halopsa_setup, name='halopsa_setup'),
     path('fetch-data/', views1.fetch_data, name='fetch_data'),
+    
+    path('incidents/status/<str:status>/', views1.IncidentsByStatus.as_view(), name='incidents_by_status'),
+    
+    path('incidents/severity/<str:severity>/', views1.IncidentsBySeverity.as_view(), name='incidents_by_severity'),
+    path('incidents/device/<str:device>/', views1.IncidentsByDevice.as_view(), name='incidents_by_device'),
 ]

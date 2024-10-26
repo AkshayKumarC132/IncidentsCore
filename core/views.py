@@ -534,11 +534,42 @@ class DashboardData(APIView):
     def get(self, request):
         user = request.user
         data = {}
-        
-        # Add user role to the response
-        data['role'] = user.role  # Include this line
 
-        # Check user role
+        # Add user role to the response
+        data['role'] = user.role
+
+        # Get the user's associated devices and clients based on their role
+        if user.role == 'admin':
+            # Admin sees all incidents
+            user_devices = Device.objects.all()
+            user_clients = Client.objects.all()
+        elif user.role == 'msp_superuser':
+            # Get all MSP configurations associated with the user
+            msp_configs = user.integrationmspconfig_set.all()
+            if msp_configs.exists():
+                # Fetch clients related to all MSPs
+                user_clients = Client.objects.filter(msp__in=msp_configs)
+                user_devices = Device.objects.filter(client__in=user_clients)
+            else:
+                # No MSP configurations found, return empty lists
+                user_clients = Client.objects.none()
+                user_devices = Device.objects.none()
+        else:  # MSP User
+            # Fetch clients associated with the MSP user
+            user_clients = Client.objects.filter(msp__user=user)
+            user_devices = Device.objects.filter(client__in=user_clients)
+
+        # Summary for incidents by severity based on user's devices or clients
+        data['severitySummary'] = list(
+            Incident.objects.filter(device__in=user_devices).values('severity__level').annotate(count=Count('id'))
+        )
+
+        # Summary for incidents by device based on user's devices or clients
+        data['deviceSummary'] = list(
+            Incident.objects.filter(device__in=user_devices).values('device__name').annotate(count=Count('id'))
+        )
+
+        # Check user role for detailed statistics
         if user.role == 'admin':  # Admin
             data['total_customers'] = Client.objects.count()
             data['total_devices'] = Device.objects.count()
@@ -547,36 +578,22 @@ class DashboardData(APIView):
             data['incident_data'] = list(Incident.objects.all().values())
 
         elif user.role == 'msp_superuser':  # MSP SuperUser
-            # Get the MSP configuration associated with the user
-            msp_config = user.integrationmspconfig_set.first()
-
-            if msp_config:
-                # Fetch clients related to this MSP
-                clients = Client.objects.filter(msp=msp_config)
-                data['total_customers'] = clients.count()
-
-                # Fetch devices related to the clients
-                devices = Device.objects.filter(client__in=clients)
-                data['total_devices'] = devices.count()
-
-                # Fetch incidents related to the devices of these clients
-                data['active_incidents'] = Incident.objects.filter(resolved=False, device__client__in=clients).count()
-                data['resolved_incidents'] = Incident.objects.filter(resolved=True, device__client__in=clients).count()
-                data['incident_data'] = list(Incident.objects.filter(device__client__in=clients).values())
-
-        else:  # MSP User
-            # Fetch clients associated with the MSP user
-            clients = Client.objects.filter(msp__user=user)
-            data['total_customers'] = clients.count()
-
-            # Fetch devices related to the clients
-            devices = Device.objects.filter(client__in=clients)
-            data['total_devices'] = devices.count()
+            data['total_customers'] = user_clients.count()  # Total customers based on filtered clients
+            data['total_devices'] = user_devices.count()    # Total devices based on filtered devices
 
             # Fetch incidents related to the devices of these clients
-            data['active_incidents'] = Incident.objects.filter(resolved=False, device__client__in=clients).count()
-            data['resolved_incidents'] = Incident.objects.filter(resolved=True, device__client__in=clients).count()
-            data['incident_data'] = list(Incident.objects.filter(device__client__in=clients).values())
+            data['active_incidents'] = Incident.objects.filter(resolved=False, device__client__in=user_clients).count()
+            data['resolved_incidents'] = Incident.objects.filter(resolved=True, device__client__in=user_clients).count()
+            data['incident_data'] = list(Incident.objects.filter(device__client__in=user_clients).values())
+
+        else:  # MSP User
+            data['total_customers'] = user_clients.count()  # Total customers based on filtered clients
+            data['total_devices'] = user_devices.count()     # Total devices based on filtered devices
+
+            # Fetch incidents related to the devices of these clients
+            data['active_incidents'] = Incident.objects.filter(resolved=False, device__client__in=user_clients).count()
+            data['resolved_incidents'] = Incident.objects.filter(resolved=True, device__client__in=user_clients).count()
+            data['incident_data'] = list(Incident.objects.filter(device__client__in=user_clients).values())
 
         return Response(data)
 

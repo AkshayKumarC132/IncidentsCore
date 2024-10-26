@@ -10,7 +10,7 @@ class Command(BaseCommand):
 
 def process_incident_predictions():
     # Fetch incidents one by one in a loop
-    for incident in Incident.objects.filter(device__in=[86, 87, 88, 89]):
+    for incident in Incident.objects.filter(device__in=[90]):
         # Prepare incident data for predictions
         incident_data = {
             'title': incident.title,
