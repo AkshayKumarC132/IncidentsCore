@@ -106,6 +106,7 @@ class Incident(models.Model):
     resolved = models.BooleanField(default=False)
     recommended_solution = models.TextField(null=True, blank=True)
     predicted_resolution_time = models.FloatField(null=True, blank=True)
+    human_intervention_needed = models.BooleanField(default=False)  # New field
     created_at = models.DateTimeField(auto_now_add=True)
 
     def _str_(self):

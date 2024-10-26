@@ -4,17 +4,18 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
 from django.utils import timezone
-from core.models import *
+from core.models import Incident
 import joblib
 import os
+from sklearn.utils.validation import NotFittedError
 
 class IncidentMLModel:
     def __init__(self):
         self.time_model = None
         self.solution_model = None
-        self.le_solution = None  # For encoding solutions
-        self.vectorizer = None  # For vectorizing text data
-        self.load_model()  # Attempt to load saved models and encoders
+        self.le_solution = None  # Label encoder for solutions
+        self.vectorizer = None  # TF-IDF vectorizer for text data
+        self.load_model()  # Load saved models and encoders if available
 
     def train(self):
         # Load incidents from the database
@@ -29,7 +30,7 @@ class IncidentMLModel:
         data['created_dayofweek'] = data['created_at'].dt.dayofweek
         data['created_month'] = data['created_at'].dt.month
 
-        # Check for missing values
+        # Drop rows with missing values
         data = data.dropna()
 
         # Prepare data for time prediction
@@ -47,8 +48,9 @@ class IncidentMLModel:
             'min_samples_split': [2, 5, 10]
         }
         rf_time = RandomForestRegressor(random_state=42)
-        grid_search_time = GridSearchCV(estimator=rf_time, param_grid=param_grid_time,
-                                        cv=3, scoring='neg_mean_absolute_error', n_jobs=-1, error_score='raise')
+        grid_search_time = GridSearchCV(
+            estimator=rf_time, param_grid=param_grid_time,
+            cv=3, scoring='neg_mean_absolute_error', n_jobs=-1, error_score='raise')
         grid_search_time.fit(X_train_time, y_train_time)
         self.time_model = grid_search_time.best_estimator_
 
@@ -57,7 +59,7 @@ class IncidentMLModel:
             print("No valid solutions for encoding.")
             return
 
-        # Vectorize 'description' column
+        # Vectorize the 'description' column
         descriptions = data['description'].fillna('')
         self.vectorizer = TfidfVectorizer()
         description_vectors = self.vectorizer.fit_transform(descriptions)
@@ -68,7 +70,7 @@ class IncidentMLModel:
             pd.DataFrame(description_vectors.toarray())
         ], axis=1)
 
-        # Convert all column names to strings
+        # Ensure column names are strings
         features_solution.columns = features_solution.columns.astype(str)
         
         self.le_solution = LabelEncoder()
@@ -86,8 +88,9 @@ class IncidentMLModel:
         }
 
         rf_solution = RandomForestClassifier(random_state=42)
-        grid_search_solution = GridSearchCV(estimator=rf_solution, param_grid=param_grid_solution,
-                                            cv=3, scoring='accuracy', n_jobs=-1, error_score='raise')
+        grid_search_solution = GridSearchCV(
+            estimator=rf_solution, param_grid=param_grid_solution,
+            cv=3, scoring='accuracy', n_jobs=-1, error_score='raise')
         grid_search_solution.fit(X_train_solution, y_train_solution)
         self.solution_model = grid_search_solution.best_estimator_
 
@@ -112,7 +115,7 @@ class IncidentMLModel:
             self.vectorizer = joblib.load('vectorizer.pkl')
 
     def predict_time(self, incident_data):
-        # Ensure the column order and data types match what the model was trained on
+        # Ensure column order and types match training data
         data = pd.DataFrame([{
             'severity_id': incident_data['severity_id'],
             'device_id': incident_data['device_id'],
@@ -120,8 +123,7 @@ class IncidentMLModel:
             'created_dayofweek': timezone.now().weekday(),
             'created_month': timezone.now().month
         }])
-
-        # Check if the data types and columns align with the trained model
+        
         data = data.astype({
             'severity_id': 'int',
             'device_id': 'int',
@@ -130,18 +132,15 @@ class IncidentMLModel:
             'created_month': 'int'
         })
 
-        # Ensure the column order matches the training data
         expected_columns = ['severity_id', 'device_id', 'created_hour', 'created_dayofweek', 'created_month']
         data = data[expected_columns]
 
         try:
             prediction = self.time_model.predict(data)
-            # print(f"Prediction for resolution time: {prediction}")
             return prediction[0]
         except Exception as e:
             print(f"Prediction error: {e}")
             return 1.0  # Default value if prediction fails
-
 
     def predict_solution(self, incident_data):
         data = pd.DataFrame([{
@@ -158,6 +157,24 @@ class IncidentMLModel:
         ], axis=1)
 
         prediction_data.columns = prediction_data.columns.astype(str)
-        predicted_solution_index = self.solution_model.predict(prediction_data)[0]
-        predicted_solution = self.le_solution.inverse_transform([predicted_solution_index])[0]
-        return predicted_solution
+
+        try:
+            predicted_solution_index = self.solution_model.predict(prediction_data)[0]
+            probabilities = self.solution_model.predict_proba(prediction_data)[0]
+            confidence = max(probabilities)
+
+            # Confidence threshold for "Human Intervention Needed"
+            threshold = 0.6
+            if confidence < threshold:
+                print(f"Low confidence ({confidence:.2f}), recommending Human Intervention.")
+                return "Human Intervention Needed"
+
+            predicted_solution = self.le_solution.inverse_transform([predicted_solution_index])[0]
+            return predicted_solution
+
+        except NotFittedError:
+            print("Model not fitted. Please train the model first.")
+            return "Human Intervention Needed"
+        except Exception as e:
+            print(f"Prediction error: {e}")
+            return "Human Intervention Needed"
