@@ -48,12 +48,12 @@ class OrchestrationLayer:
         incident.human_intervention_needed = False
         incident.save()
 
-        # Map to agent type based on keywords in title/description
-        if "network" in incident.title.lower() or "network" in incident.description.lower():
+        # Map to agent type based on keywords in title/description/recommended_solution
+        if "network" in incident.title.lower() or "network" in incident.description.lower() or "network" in incident.recommended_solution.lower():
             return 'network'
-        elif "security" in incident.title.lower() or "security" in incident.description.lower():
+        elif "security" in incident.title.lower() or "security" in incident.description.lower() or "security" in incident.recommended_solution.lower():
             return 'security'
-        elif "hardware" in incident.title.lower() or "hardware" in incident.description.lower():
+        elif "hardware" in incident.title.lower() or "hardware" in incident.description.lower() or "hardware" in incident.recommended_solution.lower():
             return 'hardware'
         else:
             return 'software'  # Default to software if no match found
