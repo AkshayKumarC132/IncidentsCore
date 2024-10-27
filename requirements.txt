@@ -23,6 +23,7 @@ pycparser==2.22
 PyJWT==1.7.1
 pyOpenSSL==24.2.1
 pysaml2==7.5.0
+pillow
 python-dateutil==2.9.0.post0
 python3-saml==1.16.0
 pytz==2024.2
