@@ -19,7 +19,17 @@ class UserProfile(AbstractUser):
         ('msp_user', 'MSP User'),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='msp_user')
+    # New fields for preferences
+    theme = models.CharField(max_length=10, choices=[('light', 'Light'), ('dark', 'Dark')], default='light')
+    notifications = models.BooleanField(default=True)
+    layout = models.CharField(max_length=20, choices=[('default', 'Default'), ('compact', 'Compact'), ('spacious', 'Spacious')], default='default')
+    background_color = models.CharField(max_length=7, default='#e0e5ec')  # Default color for neumorphism
+    shadow_color = models.CharField(max_length=7, default='#a3b1c6')      # Default shadow color
 
+    # New fields for menu position and logo URL
+    menu_position = models.CharField(max_length=10, choices=[('top', 'Top'), ('left', 'Left')], default='top')
+    logo_url = models.ImageField(upload_to='logos/', null=True, blank=True)
+    
     class Meta:
         db_table = "user_profile"
 

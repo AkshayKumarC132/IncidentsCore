@@ -39,6 +39,8 @@ from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
 from django.utils.datastructures import MultiValueDictKeyError
 import json
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 
 
 @api_view(['POST'])
@@ -1287,3 +1289,40 @@ class IncidentsByDevice(APIView):
         incidents = Incident.objects.filter(device__name=device, device__in=user_devices)
         incident_data = list(incidents.values('title', 'device__name', 'severity__level', 'resolved'))
         return Response(incident_data)
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_preferences(request):
+    user_profile = request.user
+    data = request.data
+
+    # Update fields from the request data
+    user_profile.theme = data.get('theme', user_profile.theme)
+    
+    # Convert notifications field to boolean
+    notifications_value = data.get('notifications', user_profile.notifications)
+    if isinstance(notifications_value, str):
+        user_profile.notifications = notifications_value.lower() == 'true'
+    else:
+        user_profile.notifications = notifications_value
+
+    user_profile.layout = data.get('layout', user_profile.layout)
+    user_profile.background_color = data.get('background_color', user_profile.background_color)
+    user_profile.shadow_color = data.get('shadow_color', user_profile.shadow_color)
+    user_profile.menu_position = data.get('menu_position', user_profile.menu_position)
+    
+    # Handle logo upload
+    if 'logo_url' in request.FILES:
+        logo_file = request.FILES['logo_url']
+        path = default_storage.save(f'logos/{logo_file.name}', ContentFile(logo_file.read()))
+        user_profile.logo_url = path
+
+    user_profile.save()
+    return Response({"status": "success", "message": "Preferences updated successfully."})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_preferences(request):
+    user_profile = request.user
+    serializer = UserProfileSerializer(user_profile)
+    return Response(serializer.data)

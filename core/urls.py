@@ -18,6 +18,8 @@ from .views import (
     DashboardData,
     MspViewSet
 )
+from incidentmanagement import settings
+from django.conf.urls.static import static
 
 router = DefaultRouter()
 # router.register(r'customers', ClientViewSet)
@@ -75,4 +77,8 @@ urlpatterns = [
     
     path('incidents/severity/<str:severity>/', views1.IncidentsBySeverity.as_view(), name='incidents_by_severity'),
     path('incidents/device/<str:device>/', views1.IncidentsByDevice.as_view(), name='incidents_by_device'),
-]
+    
+    path('user/preferences/', views1.get_preferences,name='get_preferences'), # GET request to retrieve preferences
+    path('user/preferences/update/', views1.update_preferences,name='update_preferences') # POST request to update preferences
+    
+]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

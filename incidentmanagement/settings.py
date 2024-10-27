@@ -195,3 +195,8 @@ CORS_ALLOW_HEADERS = [
 ]
 
 APPEND_SLASH=False
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+MEDIA_URL = '/'  # This is the URL path for accessing media files
+MEDIA_ROOT = os.path.join(BASE_DIR, 'logos')  # This points to the logos directory

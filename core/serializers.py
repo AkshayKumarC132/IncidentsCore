@@ -35,7 +35,7 @@ class MspSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['id', 'username', 'email', 'name', 'role', 'is_active', 'created_at']
+        fields = ['id', 'username', 'email', 'name', 'role', 'is_active', 'created_at','theme', 'notifications', 'layout', 'background_color', 'shadow_color', 'menu_position', 'logo_url']
         
 class TeamSerializer(serializers.ModelSerializer):
     members = UserProfileSerializer(many=True, read_only=True)  # Make it read-only in the serializer
