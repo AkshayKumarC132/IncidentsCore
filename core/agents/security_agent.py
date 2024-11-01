@@ -2,6 +2,8 @@
 
 import pika
 import json
+from core.management.django_model.model import IncidentLog
+from django.utils import timezone
 
 class SecurityAgent:
     def __init__(self, queue_name='task_queue'):
@@ -43,7 +45,10 @@ class SecurityAgent:
             # Simulate fixing a security issue
         else:
             print(f"Performing general security maintenance for incident {task_data['incident_id']}")
-
+        log_id = task_data.get('log_id')
+        log_entry = IncidentLog.objects.get(id=log_id)
+        log_entry.resolution_started_at = timezone.now()
+        log_entry.save()
     def start_listening(self):
         print("Security Agent waiting for tasks...")
         self.channel.basic_qos(prefetch_count=1)

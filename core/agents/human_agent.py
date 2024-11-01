@@ -1,6 +1,9 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from core.management.django_model.model import IncidentLog
+from django.utils import timezone
+
 
 class HumanAgent:
     def __init__(self):
@@ -34,4 +37,11 @@ class HumanAgent:
     def process_task(self, task_data):
         """Process tasks that need human intervention."""
         print(f"Processing task for human intervention: {task_data}")
-        self.send_email_notification(task_data)
+        try:
+            self.send_email_notification(task_data)
+            log_id = task_data.get('log_id')
+            log_entry = IncidentLog.objects.get(id=log_id)
+            log_entry.resolution_started_at = timezone.now()
+            log_entry.save()
+        except:
+            pass

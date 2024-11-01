@@ -1449,9 +1449,19 @@ class RunOrchestrationView(APIView):
             # Initialize the OrchestrationLayer and dispatch the incident
             orchestrator = OrchestrationLayer()
             agent_name = orchestrator.dispatch_incident(incident)
+            # orchestrator.start_listening()
             return Response({"message": "Incident {} dispatched successfully to {}".format(incident.title, agent_name)}, status=status.HTTP_200_OK)
 
-        except Incident.DoesNotExist:
+        except Incident.DoesNotExist:   
             return Response({"error": "Incident not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_incident_logs(request, incident_id):
+    print(incident_id)
+    logs = IncidentLog.objects.filter(incident__id=incident_id)
+    serializer = IncidentLogSerializer(logs, many=True)
+    return Response(serializer.data)

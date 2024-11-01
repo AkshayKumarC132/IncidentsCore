@@ -226,3 +226,9 @@ class IncidentSerializers(serializers.ModelSerializer):
 
     def get_device_name(self, obj):
         return obj.device.name  # Assuming 'name' is the attribute in Device
+    
+    
+class IncidentLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IncidentLog
+        fields = ['id', 'incident', 'assigned_agent', 'assigned_at', 'resolved_at', 'resolution_time']

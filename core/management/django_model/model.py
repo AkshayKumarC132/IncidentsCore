@@ -3,8 +3,11 @@
 
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
 
 # User Profile with role selection
+
+
 class UserProfile(AbstractUser):
     id = models.AutoField(primary_key=True, db_column='user_id')
     name = models.CharField(max_length=100, null=True)
@@ -18,18 +21,24 @@ class UserProfile(AbstractUser):
         ('msp_superuser', 'MSP SuperUser'),
         ('msp_user', 'MSP User'),
     ]
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='msp_user')
+    role = models.CharField(
+        max_length=20, choices=ROLE_CHOICES, default='msp_user')
     # New fields for preferences
-    theme = models.CharField(max_length=10, choices=[('light', 'Light'), ('dark', 'Dark')], default='light')
+    theme = models.CharField(max_length=10, choices=[(
+        'light', 'Light'), ('dark', 'Dark')], default='light')
     notifications = models.BooleanField(default=True)
-    layout = models.CharField(max_length=20, choices=[('default', 'Default'), ('compact', 'Compact'), ('spacious', 'Spacious')], default='default')
-    background_color = models.CharField(max_length=7, default='#e0e5ec')  # Default color for neumorphism
-    shadow_color = models.CharField(max_length=7, default='#a3b1c6')      # Default shadow color
+    layout = models.CharField(max_length=20, choices=[(
+        'default', 'Default'), ('compact', 'Compact'), ('spacious', 'Spacious')], default='default')
+    background_color = models.CharField(
+        max_length=7, default='#e0e5ec')  # Default color for neumorphism
+    shadow_color = models.CharField(
+        max_length=7, default='#a3b1c6')      # Default shadow color
 
     # New fields for menu position and logo URL
-    menu_position = models.CharField(max_length=10, choices=[('top', 'Top'), ('left', 'Left')], default='top')
+    menu_position = models.CharField(
+        max_length=10, choices=[('top', 'Top'), ('left', 'Left')], default='top')
     logo_url = models.ImageField(upload_to='logos/', null=True, blank=True)
-    
+
     class Meta:
         db_table = "user_profile"
 
@@ -64,6 +73,8 @@ class IntegrationMSPConfig(models.Model):
         unique_together = ('user', 'type')
 
 # Teams for MSPs
+
+
 class Team(models.Model):
     name = models.CharField(max_length=255)
     msp = models.ForeignKey('IntegrationMSPConfig', on_delete=models.CASCADE)
@@ -75,12 +86,16 @@ class Team(models.Model):
         return self.name
 
 # Client Model (Extended with email and phone)
+
+
 class Client(models.Model):
     name = models.CharField(max_length=255)
     email = models.EmailField(blank=True, null=True)  # Added email field
-    phone = models.CharField(max_length=20, blank=True, null=True)  # Added phone field
+    phone = models.CharField(max_length=20, blank=True,
+                             null=True)  # Added phone field
     msp = models.ForeignKey(IntegrationMSPConfig, on_delete=models.CASCADE)
-    team_member = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name="clients")  # New field to assign a team member
+    team_member = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True,
+                                    blank=True, related_name="clients")  # New field to assign a team member
     created_at = models.DateTimeField(auto_now_add=True)
 
     def _str_(self):
@@ -152,3 +167,17 @@ class Task(models.Model):
 
     def _str_(self):
         return f"Task for {self.agent.name} on incident {self.incident.title[:30]}"
+
+
+class IncidentLog(models.Model):
+    incident = models.ForeignKey(Incident, on_delete=models.CASCADE)
+    # Could be 'network', 'security', etc.
+    assigned_agent = models.CharField(max_length=50)
+    assigned_at = models.DateTimeField(default=timezone.now)
+    resolution_started_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    # In hours, calculated after resolution
+    resolution_time = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'incident_log'
