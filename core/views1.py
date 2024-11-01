@@ -15,7 +15,7 @@ from rest_framework import generics, permissions
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from rest_framework.views import APIView
-from django.db.models import Avg,Count
+from django.db.models import Avg, Count
 from django.shortcuts import render
 from django.http import HttpResponse
 import pandas as pd
@@ -26,14 +26,15 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 import base64
-from incidentmanagement.settings import TestConnectWiseCredentialsViaURL,TestHaloPSACredentialsViaURL,ConnectWiseClientId
+from incidentmanagement.settings import TestConnectWiseCredentialsViaURL, TestHaloPSACredentialsViaURL, ConnectWiseClientId
 import requests
 from django.http import JsonResponse
-from rest_framework.decorators import api_view,permission_classes,action
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.hashers import make_password
-from django.db import IntegrityError  # Importing IntegrityError to handle duplicate entries
+# Importing IntegrityError to handle duplicate entries
+from django.db import IntegrityError
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
@@ -41,6 +42,8 @@ from django.utils.datastructures import MultiValueDictKeyError
 import json
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+from core.management.ml_model.MLModel import IncidentMLModel
+from core.orchestration.OrchestrationLayer import OrchestrationLayer
 
 
 @api_view(['POST'])
@@ -65,7 +68,8 @@ def register(request):
     email = request.data['email']
     password = request.data['password']
     name = request.data['name']
-    role = request.data.get('role', 'msp_user')  # Default to 'msp_user' if not provided
+    # Default to 'msp_user' if not provided
+    role = request.data.get('role', 'msp_user')
 
     # Validate if role is one of the allowed choices
     allowed_roles = ['admin', 'msp_superuser', 'msp_user']
@@ -74,7 +78,7 @@ def register(request):
             {"error": f"Invalid role. Allowed roles are: {', '.join(allowed_roles)}"},
             status=status.HTTP_400_BAD_REQUEST
         )
-    if UserProfile.objects.filter(email = email).exists():
+    if UserProfile.objects.filter(email=email).exists():
         return Response(
             {"error": "Email already exists. Please choose a different email."},
             status=status.HTTP_400_BAD_REQUEST
@@ -116,7 +120,7 @@ def register(request):
 class LoginViewAPI(APIView):
     serializer_class = LoginSerialzier
     permission_classes = [AllowAny]  # Allow anyone to access this view
-    
+
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid(raise_exception=True):
@@ -128,25 +132,27 @@ class LoginViewAPI(APIView):
                 login(request, user)
                 # Get or create the token for the user
                 token, created = Token.objects.get_or_create(user=user)
-                
-                profile = UserProfile.objects.filter(username = username).values()
+
+                profile = UserProfile.objects.filter(
+                    username=username).values()
                 return Response(
                     {
-                        'message':"Login Successfull",
-                        "data":profile,
+                        'message': "Login Successfull",
+                        "data": profile,
                         'token': token.key,  # Return the token
                     }
                 )
             else:
                 return Response({'message': "Invalid username or password"}, status=status.HTTP_401_UNAUTHORIZED)
 
+
 class LogoutViewAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
-            up = UserProfile.objects.get(username = request.user)
-            token = Token.objects.get(user = up)
+            up = UserProfile.objects.get(username=request.user)
+            token = Token.objects.get(user=up)
             # Get the token from the request
             # token = request.auth
             # Check if the token exists
@@ -157,6 +163,8 @@ class LogoutViewAPI(APIView):
             return Response({'error': str(e)}, status=400)
 
 # View to List and Create Integration Types (Admin or Superuser access)
+
+
 class IntegrationTypeView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -179,11 +187,13 @@ class IntegrationTypeView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 # View to setup MSP integration configuration
 # Assuming ConnectWise and HaloPSA endpoints and client IDs are defined elsewhere
 ConnectWiseClientId = "006d3e9d-26aa-461b-914c-1b6901beea3b"
 TestConnectWiseCredentialsViaURL = "https://api-staging.connectwisedev.com/v2022_2/apis/3.0/service/tickets"
 TestHaloPSACredentialsViaURL = "https://xamplify.halopsa.com/auth/token"
+
 
 class IntegrationMSPConfigView(APIView):
     permission_classes = [IsAuthenticated]
@@ -195,7 +205,7 @@ class IntegrationMSPConfigView(APIView):
                 {"error": "You do not have permission to set up MSP integrations."},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
         # Extract necessary fields from request
         type_id = request.data.get('type_id')
         company_id = request.data.get('company_id', "")
@@ -236,13 +246,15 @@ class IntegrationMSPConfigView(APIView):
 
         # Handle ConnectWise integration type
         if type_instance.name == 'ConnectWise':
-            auth_token = base64.b64encode(f"{company_id}+{public_key}:{private_key}".encode()).decode()
+            auth_token = base64.b64encode(
+                f"{company_id}+{public_key}:{private_key}".encode()).decode()
             headers = {
                 "Authorization": f"Basic {auth_token}",
                 "clientID": ConnectWiseClientId,
                 "Content-Type": "application/json"
             }
-            response = requests.get(TestConnectWiseCredentialsViaURL, headers=headers)
+            response = requests.get(
+                TestConnectWiseCredentialsViaURL, headers=headers)
 
             # If response fails, return error
             if response.status_code != 200:
@@ -255,7 +267,8 @@ class IntegrationMSPConfigView(APIView):
         elif type_instance.name == 'HaloPSA':
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
             payload = f'grant_type=client_credentials&client_id={client_id}&client_secret={client_secret}&scope=all'
-            response = requests.post(TestHaloPSACredentialsViaURL, headers=headers, data=payload)
+            response = requests.post(
+                TestHaloPSACredentialsViaURL, headers=headers, data=payload)
 
             # If response fails, return error
             if response.status_code != 200:
@@ -272,8 +285,10 @@ class IntegrationMSPConfigView(APIView):
             config.expires_in = tokens_data.get('expires_in')
 
             # Fetch and save clients data from HaloPSA
-            halo_headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-            client_response = requests.get(f"{instance_url}/api/Client", headers=halo_headers)
+            halo_headers = {
+                "Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+            client_response = requests.get(
+                f"{instance_url}/api/Client", headers=halo_headers)
 
             if client_response.status_code == 200:
                 clients_data = client_response.json().get('clients', [])
@@ -285,11 +300,13 @@ class IntegrationMSPConfigView(APIView):
                     )
 
             # Fetch and save tickets and associated devices from HaloPSA
-            tickets_response = requests.get(f"{instance_url}/api/Tickets", headers=halo_headers)
+            tickets_response = requests.get(
+                f"{instance_url}/api/Tickets", headers=halo_headers)
             if tickets_response.status_code == 200:
                 tickets_data = tickets_response.json().get('tickets', [])
                 for ticket in tickets_data:
-                    severity, _ = Severity.objects.get_or_create(id=ticket['priority_id'])
+                    severity, _ = Severity.objects.get_or_create(
+                        id=ticket['priority_id'])
                     ticket_client_id = ticket['client_id']
 
                     if ticket_client_id:
@@ -338,7 +355,8 @@ class IntegrationMSPConfigView(APIView):
             configs = IntegrationMSPConfig.objects.filter(user=request.user)
         serializer = IntegrationMSPConfigSerializer(configs, many=True)
         return Response(serializer.data)
-    
+
+
 class TeamManagementAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -366,7 +384,8 @@ class TeamManagementAPI(APIView):
         msp = get_object_or_404(IntegrationMSPConfig, id=msp_id)
 
         # Only allow users within the same MSP configuration to be added
-        members = UserProfile.objects.filter(id__in=member_ids, role__in=['admin', 'msp_superuser', 'msp_user'])
+        members = UserProfile.objects.filter(id__in=member_ids, role__in=[
+                                             'admin', 'msp_superuser', 'msp_user'])
 
         # Create the team and assign members
         team = Team.objects.create(name=team_name, msp=msp)
@@ -412,7 +431,8 @@ class TeamManagementAPI(APIView):
         member_ids = request.data.get('members', [])
 
         # Only allow users within the same MSP configuration to be added as members
-        members = UserProfile.objects.filter(id__in=member_ids, role__in=['admin', 'msp_superuser', 'msp_user'])
+        members = UserProfile.objects.filter(id__in=member_ids, role__in=[
+                                             'admin', 'msp_superuser', 'msp_user'])
 
         # Update team data
         team.name = team_name
@@ -436,7 +456,7 @@ class TeamManagementAPI(APIView):
         team.delete()
 
         return Response({"message": "Team deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
-    
+
 
 class ClientManagementAPI(APIView):
     permission_classes = [IsAuthenticated]
@@ -451,8 +471,8 @@ class ClientManagementAPI(APIView):
 
         # Extract client data from request
         client_name = request.data.get('name')
-        client_email = request.data.get('email',"")
-        client_phone = request.data.get('phone',"")
+        client_email = request.data.get('email', "")
+        client_phone = request.data.get('phone', "")
         msp_id = request.data.get('msp_id')
         team_member_id = request.data.get('team_member')
         if team_member_id:
@@ -474,7 +494,6 @@ class ClientManagementAPI(APIView):
         team_member = None
         if team_member_id:
             team_member = get_object_or_404(UserProfile, id=team_member_id)
-
 
         # Create the client
         client = Client.objects.create(
@@ -503,7 +522,8 @@ class ClientManagementAPI(APIView):
             return Response(serializer.data)
         else:
             # Fetch a specific client
-            client = get_object_or_404(Client, id=client_id, msp__user=request.user)
+            client = get_object_or_404(
+                Client, id=client_id, msp__user=request.user)
             serializer = ClientSerializerr(client)
             return Response(serializer.data)
 
@@ -516,7 +536,8 @@ class ClientManagementAPI(APIView):
             )
 
         # Fetch the client object
-        client = get_object_or_404(Client, id=client_id, msp__user=request.user)
+        client = get_object_or_404(
+            Client, id=client_id, msp__user=request.user)
 
         # Extract data from request
         client_name = request.data.get('name', client.name)
@@ -542,12 +563,13 @@ class ClientManagementAPI(APIView):
             )
 
         # Fetch and delete the client
-        client = get_object_or_404(Client, id=client_id, msp__user=request.user)
+        client = get_object_or_404(
+            Client, id=client_id, msp__user=request.user)
         client.delete()
 
         return Response({"message": "Client deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
-    
-    
+
+
 class DeviceManagementAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -573,10 +595,12 @@ class DeviceManagementAPI(APIView):
             )
 
         # Get the client object
-        client = get_object_or_404(Client, id=client_id, msp__user=request.user)
+        client = get_object_or_404(
+            Client, id=client_id, msp__user=request.user)
 
         # Create the device
-        device = Device.objects.create(name=name, device_type=device_type, ip_address=ip_address, client=client)
+        device = Device.objects.create(
+            name=name, device_type=device_type, ip_address=ip_address, client=client)
 
         # Serialize the response
         serializer = DeviceSerializer(device)
@@ -597,7 +621,8 @@ class DeviceManagementAPI(APIView):
             return Response(serializer.data)
         else:
             # Fetch a specific device
-            device = get_object_or_404(Device, id=device_id, client__msp__user=request.user)
+            device = get_object_or_404(
+                Device, id=device_id, client__msp__user=request.user)
             serializer = DeviceSerializer(device)
             return Response(serializer.data)
 
@@ -610,7 +635,8 @@ class DeviceManagementAPI(APIView):
             )
 
         # Fetch the device object
-        device = get_object_or_404(Device, id=device_id, client__msp__user=request.user)
+        device = get_object_or_404(
+            Device, id=device_id, client__msp__user=request.user)
 
         # Extract data from request
         name = request.data.get('name', device.name)
@@ -636,11 +662,13 @@ class DeviceManagementAPI(APIView):
             )
 
         # Fetch and delete the device
-        device = get_object_or_404(Device, id=device_id, client__msp__user=request.user)
+        device = get_object_or_404(
+            Device, id=device_id, client__msp__user=request.user)
         device.delete()
 
         return Response({"message": "Device deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
-    
+
+
 class IncidentManagementAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -658,7 +686,8 @@ class IncidentManagementAPI(APIView):
         severity = request.data.get('severity')
         device_id = request.data.get('deviceId')
         recommended_solutions = request.data.get('recommended_solutions', '')
-        predicted_resolution_time = request.data.get('predicted_resolution_time', None)
+        predicted_resolution_time = request.data.get(
+            'predicted_resolution_time', None)
 
         # Validate input
         if not title or not description or not severity or not device_id:
@@ -693,15 +722,20 @@ class IncidentManagementAPI(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # Fetch all incidents associated with devices managed by the user's MSP
         if incident_id is None:
-            # Fetch all incidents associated with devices managed by the user's MSP
-            incidents = Incident.objects.filter(device__client__msp__user=request.user)
-            serializer = IncidentSerializerr(incidents, many=True)
+            incidents = Incident.objects.filter(
+                device__client__msp__user=request.user
+            )
+            serializer = IncidentSerializer(incidents, many=True)
             return Response(serializer.data)
+
+        # Fetch a specific incident
         else:
-            # Fetch a specific incident
-            incident = get_object_or_404(Incident, id=incident_id, device__client__msp__user=request.user)
-            serializer = IncidentSerializerr(incident)
+            incident = get_object_or_404(
+                Incident, id=incident_id, device__client__msp__user=request.user
+            )
+            serializer = IncidentSerializer(incident)
             return Response(serializer.data)
 
     def put(self, request, incident_id):
@@ -713,21 +747,24 @@ class IncidentManagementAPI(APIView):
             )
 
         # Fetch the incident object
-        incident = get_object_or_404(Incident, id=incident_id, device__client__msp__user=request.user)
+        incident = get_object_or_404(
+            Incident, id=incident_id, device__client__msp__user=request.user)
 
         # Extract data from request
         title = request.data.get('title', incident.title)
         description = request.data.get('description', incident.description)
         severity = request.data.get('severity', incident.severity)
-        recommended_solutions = request.data.get('recommended_solutions', incident.recommended_solutions)
-        predicted_resolution_time = request.data.get('predicted_resolution_time', incident.predicted_resolution_time)
+        recommended_solutions = request.data.get(
+            'recommended_solutions', incident.recommended_solutions)
+        predicted_resolution_time = request.data.get(
+            'predicted_resolution_time', incident.predicted_resolution_time)
         resolved = request.data.get('resolved', incident.resolved)
 
         # Update incident data
         incident.title = title
         incident.description = description
         incident.severity = severity
-        incident.recommended_solutions = recommended_solutions
+        incident.recommended_solution = recommended_solutions
         incident.predicted_resolution_time = predicted_resolution_time
         incident.resolved = resolved
         incident.save()
@@ -745,11 +782,12 @@ class IncidentManagementAPI(APIView):
             )
 
         # Fetch and delete the incident
-        incident = get_object_or_404(Incident, id=incident_id, device__client__msp__user=request.user)
+        incident = get_object_or_404(
+            Incident, id=incident_id, device__client__msp__user=request.user)
         incident.delete()
 
         return Response({"message": "Incident deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
-    
+
 
 class AssignClientsToTeamMembers(APIView):
     permission_classes = [IsAuthenticated]
@@ -757,7 +795,8 @@ class AssignClientsToTeamMembers(APIView):
     def post(self, request):
         team_id = request.data.get('team_id')
         client_ids = request.data.get('client_ids')  # Array of client IDs
-        team_member_id = request.data.get('team_member_id')  # The team member ID to assign the clients to
+        # The team member ID to assign the clients to
+        team_member_id = request.data.get('team_member_id')
 
         # Validate the input
         if not team_id or not client_ids or not team_member_id:
@@ -774,7 +813,8 @@ class AssignClientsToTeamMembers(APIView):
 
         # Assign clients to the team member
         clients = Client.objects.filter(id__in=client_ids)
-        clients.update(team_member_id=team_member_id)  # Assign the team member to each client
+        # Assign the team member to each client
+        clients.update(team_member_id=team_member_id)
 
         return Response({"message": "Clients successfully assigned to the team member."},
                         status=status.HTTP_200_OK)
@@ -797,26 +837,29 @@ class AssignClientsToTeamMembers(APIView):
         clients.update(team_member=None)  # Remove assignment
 
         return Response({"message": "Clients successfully unassigned."}, status=status.HTTP_200_OK)
-    
-    
+
+
 @api_view(['GET'])
 def get_team_members(request):
     user = request.user
     teams = Team.objects.filter(msp__user=user)  # Filter based on MSP and user
-    team_members = UserProfile.objects.filter(teams__in=teams).distinct()  # Fetch members of those teams
+    team_members = UserProfile.objects.filter(
+        teams__in=teams).distinct()  # Fetch members of those teams
     serializer = UserProfileSerializer(team_members, many=True)
     return Response(serializer.data)
 
+
 class SeverityAPI(APIView):
-    permission_classes = [IsAuthenticated]  # Only authenticated users can access this API
+    # Only authenticated users can access this API
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         # Fetch all severity levels from the database
         severities = Severity.objects.all()
         serializer = SeveritySerializer(severities, many=True)
         return Response(serializer.data)
-    
-    
+
+
 # Utility function for creating Integration configuration
 def create_integration_msp_config(user, type, data, response):
     try:
@@ -852,8 +895,10 @@ def create_integration_msp_config(user, type, data, response):
 
         return config, created
     except Exception as e:
-        return Response({'Error Saving the details : '},str(e))
+        return Response({'Error Saving the details : '}, str(e))
 # ConnectWise Configuration
+
+
 def validate_connectwise_credentials(data):
     """
     Function to validate ConnectWise credentials by making an API call to ConnectWise.
@@ -865,7 +910,8 @@ def validate_connectwise_credentials(data):
     instance_url = data['instance_url']
 
     # Create the authorization token
-    auth_token = base64.b64encode(f"{company_id}+{public_key}:{private_key}".encode()).decode()
+    auth_token = base64.b64encode(
+        f"{company_id}+{public_key}:{private_key}".encode()).decode()
 
     # Prepare headers with Basic Auth and clientID
     headers = {
@@ -882,6 +928,7 @@ def validate_connectwise_credentials(data):
 
     # Return if the request was successful and the response data
     return response.status_code == 200, response.json()
+
 
 @csrf_exempt
 @api_view(['GET', 'POST'])
@@ -900,14 +947,14 @@ def connectwise_setup(request):
             client_id = data['client_id']
             public_key = data['public_key']
             private_key = data['private_key']
-            
+
             is_valid, response_data = validate_connectwise_credentials({
-                        'instance_url': instance_url,
-                        'company_id': company_id,
-                        'client_id': client_id,
-                        'public_key': public_key,
-                        'private_key': private_key,
-                    })
+                'instance_url': instance_url,
+                'company_id': company_id,
+                'client_id': client_id,
+                'public_key': public_key,
+                'private_key': private_key,
+            })
 
             if is_valid:
                 # Save configuration if valid
@@ -930,8 +977,9 @@ def connectwise_setup(request):
     elif request.method == 'GET':
         try:
             # Retrieve ConnectWise configuration for the authenticated user
-            type = IntegrationType.objects.get(name = 'ConnectWise')
-            config = IntegrationMSPConfig.objects.filter(user=request.user, type=type).first()
+            type = IntegrationType.objects.get(name='ConnectWise')
+            config = IntegrationMSPConfig.objects.filter(
+                user=request.user, type=type).first()
 
             if config:
                 return JsonResponse({
@@ -953,21 +1001,23 @@ def connectwise_setup(request):
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=405)
 
-        
+
 # HaloPSA Configuration
 def validate_halopsa_credentials(data):
     """
     Function to validate HaloPSA credentials by making an API call to HaloPSA.
     """
     url = f"{data['instance_url']}/auth/token"
-    
-    payload = 'grant_type=client_credentials&client_id={}&client_secret={}&scope=all'.format(data['client_id'],data['client_secret'])
+
+    payload = 'grant_type=client_credentials&client_id={}&client_secret={}&scope=all'.format(
+        data['client_id'], data['client_secret'])
     headers = {
         'Content-Type': 'application/x-www-form-urlencoded'
     }
 
     response = requests.post(url, headers=headers, data=payload)
     return response.status_code == 200, response.json()
+
 
 @csrf_exempt
 @api_view(['POST'])
@@ -994,15 +1044,17 @@ def halopsa_setup(request):
             return JsonResponse({"status": "success", "message": "HaloPSA configuration saved"})
         else:
             return JsonResponse({"status": "failed", "message": "Invalid HaloPSA credentials", "data": response_data}, status=400)
-    
+
+
 # Fetching Data for ConnectWise
-import base64
+
 
 def fetch_connectwise_data(config):
     try:
         # Generate Base64 encoded auth token
-        auth_token = base64.b64encode(f"{config.company_id}+{config.public_key}:{config.private_key}".encode()).decode()
-        
+        auth_token = base64.b64encode(
+            f"{config.company_id}+{config.public_key}:{config.private_key}".encode()).decode()
+
         # Update headers with the new authentication method
         headers = {
             "Authorization": f"Basic {auth_token}",
@@ -1013,7 +1065,7 @@ def fetch_connectwise_data(config):
         # Fetch all clients and store them in a dictionary for quick lookup by name
         url_clients = f"{config.instance_url}/v4_6_release/apis/3.0/company/companies"
         response = requests.get(url_clients, headers=headers)
-        
+
         if response.status_code == 200:
             clients_data = response.json()
             clients_lookup = {}
@@ -1029,9 +1081,11 @@ def fetch_connectwise_data(config):
                             'phone': client_data.get('phoneNumber', '')
                         }
                     )
-                    clients_lookup[client_data['name']] = client  # Add to lookup
+                    clients_lookup[client_data['name']
+                                   ] = client  # Add to lookup
                 except Exception as e:
-                    print(f"Error processing client {client_data['name']}: {str(e)}")
+                    print(
+                        f"Error processing client {client_data['name']}: {str(e)}")
 
         # Fetch Devices and associate them with the correct client based on the client name
         url_devices = f"{config.instance_url}/v4_6_release/apis/3.0/company/configurations"
@@ -1042,7 +1096,8 @@ def fetch_connectwise_data(config):
             for device_data in devices_data:
                 try:
                     # Lookup client by name from the devices data
-                    client_name = device_data.get('company', {}).get('name')  # Assuming 'company' key holds client info
+                    client_name = device_data.get('company', {}).get(
+                        'name')  # Assuming 'company' key holds client info
                     client = clients_lookup.get(client_name)
 
                     if client:
@@ -1055,7 +1110,8 @@ def fetch_connectwise_data(config):
                             }
                         )
                     else:
-                        print(f"Client not found for device: {device_data['name']}")
+                        print(
+                            f"Client not found for device: {device_data['name']}")
 
                 except Exception as e:
                     print(f"Error updating or creating device: {str(e)}")
@@ -1074,15 +1130,16 @@ def fetch_connectwise_data(config):
 
                     if client:
                         # Get related device for the incident
-                        device = Device.objects.filter(client=client).first()  # Assuming the first device
-                        
+                        device = Device.objects.filter(
+                            client=client).first()  # Assuming the first device
+
                         if device:
                             # Get or create Severity level
                             severity, _ = Severity.objects.get_or_create(
                                 level=incident_data.get('severity', 'Low')
                             )
 
-                            Incident.objects.update_or_create(
+                            incident, created = Incident.objects.update_or_create(
                                 title=incident_data['summary'],
                                 device=device,  # Associate with the Device
                                 severity=severity,  # Associate with the Severity
@@ -1093,10 +1150,28 @@ def fetch_connectwise_data(config):
                                     'predicted_resolution_time': incident_data.get('estimatedResolutionTime', None)
                                 }
                             )
+                            # Use your ML model to predict the time and solution
+                            model = IncidentMLModel()
+                            predicted_time = model.predict_time({
+                                'severity_id': incident.severity_id,
+                                'device_id': incident.device_id
+                            })
+
+                            predicted_solution = model.predict_solution({
+                                'severity_id': incident.severity_id,
+                                'device_id': incident.device_id,
+                                'description': incident.description
+                            })
+
+                            # Update the incident with predicted values
+                            incident.predicted_resolution_time = predicted_time
+                            incident.recommended_solution = predicted_solution
+                            incident.save()
                         else:
                             print(f"No device found for client: {client_name}")
                     else:
-                        print(f"Client not found for incident: {incident_data['summary']}")
+                        print(
+                            f"Client not found for incident: {incident_data['summary']}")
 
                 except Exception as e:
                     print(f"Error updating or creating incident: {str(e)}")
@@ -1104,22 +1179,24 @@ def fetch_connectwise_data(config):
     except Exception as e:
         return Response({str(e)})
 
-        
+
 # Fetching Data for HaloPSA
 def fetch_halopsa_data(config):
     try:
         url = f"{config.instance_url}/auth/token"
-    
-        payload = 'grant_type=client_credentials&client_id={}&client_secret={}&scope=all'.format(config.client_id, config.client_secret)
+
+        payload = 'grant_type=client_credentials&client_id={}&client_secret={}&scope=all'.format(
+            config.client_id, config.client_secret)
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
 
         auth_response = requests.post(url, headers=headers, data=payload)
         if not auth_response.status_code == 200:
-            return Response({'message':"No Valid Credentials Provided"})
-        IntegrationMSPConfig.objects.filter(id= config.id).update(access_token = auth_response.json()['access_token'],expires_in = auth_response.json()['expires_in'],refresh_token = auth_response.json()['refresh_token'])
-        
+            return Response({'message': "No Valid Credentials Provided"})
+        IntegrationMSPConfig.objects.filter(id=config.id).update(access_token=auth_response.json(
+        )['access_token'], expires_in=auth_response.json()['expires_in'], refresh_token=auth_response.json()['refresh_token'])
+
         # Fetch all clients and store them in a dictionary for quick lookup by name
         url_clients = f"{config.instance_url}/api/Client"
         headers = {
@@ -1143,9 +1220,11 @@ def fetch_halopsa_data(config):
                             'phone': client_data.get('phone', '')
                         }
                     )
-                    clients_lookup[client_data['name']] = client  # Add to lookup
+                    clients_lookup[client_data['name']
+                                   ] = client  # Add to lookup
                 except Exception as e:
-                    print(f"Error processing client {client_data['name']}: {str(e)}")
+                    print(
+                        f"Error processing client {client_data['name']}: {str(e)}")
         else:
             return Response({'Invalid Acces Token'})
         # Fetch Devices and associate them with the correct client based on client_name
@@ -1158,10 +1237,11 @@ def fetch_halopsa_data(config):
                     # Lookup client by name from the devices data
                     client_name = device_data.get('client_name')
                     client = clients_lookup.get(client_name)
-                    
+
                     if client:
                         Device.objects.update_or_create(
-                            name=device_data['inventory_number'] + ' - ' + device_data['key_field'],
+                            name=device_data['inventory_number'] +
+                            ' - ' + device_data['key_field'],
                             client=client,  # Associate with the correct Client
                             defaults={
                                 'device_type': device_data.get('deviceType', ''),
@@ -1169,11 +1249,12 @@ def fetch_halopsa_data(config):
                             }
                         )
                     else:
-                        print(f"Client not found for device: {device_data['inventory_number']}")
+                        print(
+                            f"Client not found for device: {device_data['inventory_number']}")
 
                 except Exception as e:
                     print(f"Error updating or creating device: {str(e)}")
-        
+
         # Fetch Incidents and associate them with the correct client and devices
         url_incidents = f"{config.instance_url}/api/Tickets"
         response_incidents = requests.get(url_incidents, headers=headers)
@@ -1187,18 +1268,19 @@ def fetch_halopsa_data(config):
 
                     if client:
                         # Get related device for the incident
-                        device = Device.objects.filter(client=client).first()  # Assuming the first device
-                        
+                        device = Device.objects.filter(
+                            client=client).first()  # Assuming the first device
+
                         if device:
                             # Get or create Severity level
                             severity, _ = Severity.objects.get_or_create(
                                 id=incident_data.get('priority_id')
                             )
 
-                            Incident.objects.update_or_create(
+                            incident, created = Incident.objects.update_or_create(
                                 title=incident_data['summary'],
-                                device= device,  # Associate with the Device
-                                severity= severity,  # Associate with the Severity
+                                device=device,  # Associate with the Device
+                                severity=severity,  # Associate with the Severity
                                 defaults={
                                     'description': incident_data.get('description', ''),
                                     'resolved': incident_data.get('status', '') == 'Closed',
@@ -1206,10 +1288,28 @@ def fetch_halopsa_data(config):
                                     'predicted_resolution_time': incident_data.get('estimatedResolutionTime', None)
                                 }
                             )
+                            # Use your ML model to predict the time and solution
+                            model = IncidentMLModel()
+                            predicted_time = model.predict_time({
+                                'severity_id': incident.severity_id,
+                                'device_id': incident.device_id
+                            })
+
+                            predicted_solution = model.predict_solution({
+                                'severity_id': incident.severity_id,
+                                'device_id': incident.device_id,
+                                'description': incident.description
+                            })
+
+                            # Update the incident with predicted values
+                            incident.predicted_resolution_time = predicted_time
+                            incident.recommended_solution = predicted_solution
+                            incident.save()
                         else:
                             print(f"No device found for client: {client_name}")
                     else:
-                        print(f"Client not found for incident: {incident_data['summary']}")
+                        print(
+                            f"Client not found for incident: {incident_data['summary']}")
 
                 except Exception as e:
                     print(f"Error updating or creating incident: {str(e)}")
@@ -1218,7 +1318,6 @@ def fetch_halopsa_data(config):
         print("HaloPSA Fetch details Error", str(e))
         return Response({str(e)})
 
-    
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1228,13 +1327,13 @@ def fetch_data(request):
     """
     # Get the user and their integration configurations
     config_list = IntegrationMSPConfig.objects.filter(user=request.user)
-    
+
     for config in config_list:
         if config.type.name == "ConnectWise":
             fetch_connectwise_data(config)
         elif config.type.name == "HaloPSA":
             fetch_halopsa_data(config)
-    
+
     return JsonResponse({"status": "success", "message": "Data fetched successfully"})
 
 
@@ -1242,18 +1341,18 @@ class IncidentsByStatus(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, status):
-        
+
         user = request.user
         # Check if the status is 'active' or 'resolved'
         if status == 'active':
             incidents = Incident.objects.filter(resolved=False)
         else:
             incidents = Incident.objects.filter(resolved=True)
-        
+
         # If user is an MSP Superuser or User, restrict the data to their clients
         if user.role == 'msp_superuser' or user.role == 'msp_user':
             # msp_config = IntegrationMSPConfig.objects.filter(user=request.user)
-            msp_config =  user.integrationmspconfig_set.first()
+            msp_config = user.integrationmspconfig_set.first()
             if msp_config:
                 clients = Client.objects.filter(msp=msp_config)
                 incidents = incidents.filter(device__client__in=clients)
@@ -1264,8 +1363,8 @@ class IncidentsByStatus(APIView):
         ))
 
         return Response(incident_data)
-    
-    
+
+
 class IncidentsBySeverity(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1274,9 +1373,12 @@ class IncidentsBySeverity(APIView):
         user_devices = Device.objects.filter(client__msp__user=request.user)
 
         # Filter incidents by severity and user's devices
-        incidents = Incident.objects.filter(severity__level=severity, device__in=user_devices)
-        incident_data = list(incidents.values('title', 'device__name', 'severity__level', 'resolved'))
+        incidents = Incident.objects.filter(
+            severity__level=severity, device__in=user_devices)
+        incident_data = list(incidents.values(
+            'title', 'device__name', 'severity__level', 'resolved'))
         return Response(incident_data)
+
 
 class IncidentsByDevice(APIView):
     permission_classes = [IsAuthenticated]
@@ -1286,10 +1388,13 @@ class IncidentsByDevice(APIView):
         user_devices = Device.objects.filter(client__msp__user=request.user)
 
         # Filter incidents by device name and user's devices
-        incidents = Incident.objects.filter(device__name=device, device__in=user_devices)
-        incident_data = list(incidents.values('title', 'device__name', 'severity__level', 'resolved'))
+        incidents = Incident.objects.filter(
+            device__name=device, device__in=user_devices)
+        incident_data = list(incidents.values(
+            'title', 'device__name', 'severity__level', 'resolved'))
         return Response(incident_data)
-    
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_preferences(request):
@@ -1298,7 +1403,7 @@ def update_preferences(request):
 
     # Update fields from the request data
     user_profile.theme = data.get('theme', user_profile.theme)
-    
+
     # Convert notifications field to boolean
     notifications_value = data.get('notifications', user_profile.notifications)
     if isinstance(notifications_value, str):
@@ -1307,18 +1412,23 @@ def update_preferences(request):
         user_profile.notifications = notifications_value
 
     user_profile.layout = data.get('layout', user_profile.layout)
-    user_profile.background_color = data.get('background_color', user_profile.background_color)
-    user_profile.shadow_color = data.get('shadow_color', user_profile.shadow_color)
-    user_profile.menu_position = data.get('menu_position', user_profile.menu_position)
-    
+    user_profile.background_color = data.get(
+        'background_color', user_profile.background_color)
+    user_profile.shadow_color = data.get(
+        'shadow_color', user_profile.shadow_color)
+    user_profile.menu_position = data.get(
+        'menu_position', user_profile.menu_position)
+
     # Handle logo upload
     if 'logo_url' in request.FILES:
         logo_file = request.FILES['logo_url']
-        path = default_storage.save(f'logos/{logo_file.name}', ContentFile(logo_file.read()))
+        path = default_storage.save(
+            f'logos/{logo_file.name}', ContentFile(logo_file.read()))
         user_profile.logo_url = path
 
     user_profile.save()
     return Response({"status": "success", "message": "Preferences updated successfully."})
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1326,3 +1436,22 @@ def get_preferences(request):
     user_profile = request.user
     serializer = UserProfileSerializer(user_profile)
     return Response(serializer.data)
+
+
+class RunOrchestrationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, incident_id):
+        try:
+            # Fetch the incident by ID
+            incident = Incident.objects.get(id=incident_id)
+
+            # Initialize the OrchestrationLayer and dispatch the incident
+            orchestrator = OrchestrationLayer()
+            agent_name = orchestrator.dispatch_incident(incident)
+            return Response({"message": "Incident {} dispatched successfully to {}".format(incident.title, agent_name)}, status=status.HTTP_200_OK)
+
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
