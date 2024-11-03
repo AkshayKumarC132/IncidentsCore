@@ -1465,3 +1465,47 @@ def get_incident_logs(request, incident_id):
     logs = IncidentLog.objects.filter(incident__id=incident_id)
     serializer = IncidentLogSerializer(logs, many=True)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_all_incident_logs(request):
+    logs = IncidentLog.objects.all().order_by('-assigned_at')  # Fetch all logs ordered by assignment time
+    serializer = IncidentLogSerializer(logs, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_incident_log_details(request):
+    # Retrieve all logs
+    logs = IncidentLog.objects.all().select_related('incident')
+
+    # Prepare log data
+    log_data = [{
+        'incident_id': log.incident.id,
+        'assigned_agent': log.assigned_agent,
+        'assigned_at': log.assigned_at,
+        'resolved_at': log.resolved_at,
+        'resolution_time': log.resolution_time if log.resolution_time else 'N/A'
+    } for log in logs]
+
+    # Calculate summary data
+    total_incidents = logs.count()
+    human_intervention_incidents = logs.filter(assigned_agent='human').count()
+    avg_resolution_time = logs.filter(resolved_at__isnull=False).aggregate(avg_resolution=Avg('resolution_time'))['avg_resolution'] or 0
+
+    # Incident distribution by severity
+    severity_counts = logs.values('incident__severity__level').annotate(count=Count('incident__severity__level'))
+
+    summary_data = {
+        'total_incidents': total_incidents,
+        'human_intervention_incidents': human_intervention_incidents,
+        'average_resolution_time': avg_resolution_time,
+        'severity_distribution': {item['incident__severity__level']: item['count'] for item in severity_counts}
+    }
+
+    return Response({
+        'logs': log_data,
+        'summary': summary_data
+    })

@@ -105,5 +105,9 @@ urlpatterns = [
          views1.RunOrchestrationView.as_view(), name='run-orchestration'),
     
     path('incident/<int:incident_id>/logs/', views1.get_incident_logs, name='get_incident_logs'),
+    
+    path('incident-logs/', views1.get_all_incident_logs, name='incident_logs'),
+    
+    path('incident-log-details/', views1.get_incident_log_details, name='incident-log-details'),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
