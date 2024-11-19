@@ -132,6 +132,9 @@ class Incident(models.Model):
     recommended_solution = models.TextField(null=True, blank=True)
     predicted_resolution_time = models.FloatField(null=True, blank=True)
     human_intervention_needed = models.BooleanField(default=False)  # New field
+    assigned_agent = models.ForeignKey(
+        UserProfile, on_delete=models.SET_NULL, null=True, related_name='assigned_incidents')
+    assigned_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def _str_(self):
@@ -181,3 +184,21 @@ class IncidentLog(models.Model):
 
     class Meta:
         db_table = 'incident_log'
+
+class Notification(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    read = models.BooleanField(default=False)
+
+    def _str_(self):
+        return f"Notification for {self.user.username}"
+    
+class TicketHistory(models.Model):
+    incident = models.ForeignKey(Incident, on_delete=models.CASCADE)
+    action = models.CharField(max_length=255)
+    performed_by = models.ForeignKey(UserProfile, on_delete=models.CASCADE, null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def _str_(self):
+        return f"{self.incident.title} - {self.action}"

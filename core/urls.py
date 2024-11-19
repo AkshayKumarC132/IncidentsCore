@@ -20,6 +20,7 @@ from .views import (
 )
 from incidentmanagement import settings
 from django.conf.urls.static import static
+from . import human_tickets
 
 router = DefaultRouter()
 # router.register(r'customers', ClientViewSet)
@@ -109,5 +110,7 @@ urlpatterns = [
     path('incident-logs/', views1.get_all_incident_logs, name='incident_logs'),
     
     path('incident-log-details/', views1.get_incident_log_details, name='incident-log-details'),
+
+    path('get_assigned_tickets/',views1.get_assigned_tickets, name='get assigned tickets')
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

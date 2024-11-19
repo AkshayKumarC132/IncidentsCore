@@ -232,3 +232,8 @@ class IncidentLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = IncidentLog
         fields = ['id', 'incident', 'assigned_agent', 'assigned_at', 'resolved_at', 'resolution_time']
+        
+class IntegrationMSPConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IntegrationMSPConfig
+        fields = ['type', 'company_id', 'public_key', 'client_id', 'instance_url']

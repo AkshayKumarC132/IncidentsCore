@@ -349,10 +349,10 @@ class IntegrationMSPConfigView(APIView):
 
     def get(self, request):
         # Get the MSP config for the current user (admins can view all configs)
-        if request.user.role == 'admin':
-            configs = IntegrationMSPConfig.objects.all()
-        else:
-            configs = IntegrationMSPConfig.objects.filter(user=request.user)
+        # if request.user.role == 'admin':
+        #     configs = IntegrationMSPConfig.objects.all()
+        # else:
+        configs = IntegrationMSPConfig.objects.filter(user=request.user)
         serializer = IntegrationMSPConfigSerializer(configs, many=True)
         return Response(serializer.data)
 
@@ -1452,7 +1452,7 @@ class RunOrchestrationView(APIView):
             # orchestrator.start_listening()
             return Response({"message": "Incident {} dispatched successfully to {}".format(incident.title, agent_name)}, status=status.HTTP_200_OK)
 
-        except Incident.DoesNotExist:   
+        except Incident.DoesNotExist:
             return Response({"error": "Incident not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1478,9 +1478,14 @@ def get_all_incident_logs(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_incident_log_details(request):
-    # Retrieve all logs
-    logs = IncidentLog.objects.all().select_related('incident')
+    # Get the current user's MSP configuration
+    user_msp_configs = IntegrationMSPConfig.objects.filter(user=request.user)
 
+    # Retrieve logs for incidents associated with the user's MSP configurations
+    logs = IncidentLog.objects.filter(
+        incident__device__client__msp__in=user_msp_configs
+    ).select_related('incident')
+    
     # Prepare log data
     log_data = [{
         'incident_id': log.incident.id,
@@ -1509,3 +1514,21 @@ def get_incident_log_details(request):
         'logs': log_data,
         'summary': summary_data
     })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_assigned_tickets(request):
+    user = request.user
+    tickets = Incident.objects.filter(assigned_agent=user, resolved=False)
+
+    ticket_data = [
+        {
+            'id': ticket.id,
+            'title': ticket.title,
+            'description': ticket.description,
+            'severity': ticket.severity.level,
+            'assigned_at': ticket.assigned_at,
+            'created_at': ticket.created_at,
+        } for ticket in tickets
+    ]
+    return Response(ticket_data)
