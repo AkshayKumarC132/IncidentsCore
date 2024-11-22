@@ -15,12 +15,11 @@ from .views import (
     TeamViewSet,
     register,
     LogoutViewAPI,
-    DashboardData,
     MspViewSet
 )
 from incidentmanagement import settings
 from django.conf.urls.static import static
-from . import human_tickets
+# from . import human_tickets, recording
 
 router = DefaultRouter()
 # router.register(r'customers', ClientViewSet)
@@ -46,7 +45,7 @@ urlpatterns = [
     path('save-integration-config/', views.save_integration_config,
          name='save_integration_config'),  # Save configuration endpoint
     path('dashboard/', views.dashboard_view, name='dashboard'),
-    path('dashboard-summary/', DashboardData.as_view(), name='dashboard_summary'),
+    path('dashboard-summary/', views.dashboard_data_, name='dashboard_summary'),
 
     path('register/', views1.register, name='register'),
 
@@ -111,6 +110,22 @@ urlpatterns = [
     
     path('incident-log-details/', views1.get_incident_log_details, name='incident-log-details'),
 
-    path('get_assigned_tickets/',views1.get_assigned_tickets, name='get assigned tickets')
+    path('get_assigned_tickets/',views1.get_assigned_tickets, name='get assigned tickets'),
+
+#     path('record', recording.record_screen,name='record'),
+
+    path('overview/', views1.dashboard_n, name='dashboard'),
+
+    path('upload/', views1.upload_page, name='upload_page'),
+    
+#     path('upload_recording_file/', views1.upload_recording, name='upload_recording'),
+
+    path('start_recording/',views1.start_recording, name='start recording'),
+
+    path('stop_recording/',views1.stop_recording, name='stop recording'),
+
+    ##########
+    path('upload_recording_chunk/', views1.upload_recording_chunk, name='upload_recording_chunk'),
+    path('finalize_recording/', views1.finalize_recording, name='finalize_recording'),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

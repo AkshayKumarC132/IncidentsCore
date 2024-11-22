@@ -4,6 +4,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
+from django.utils.timezone import now
+from datetime import timedelta
 
 # User Profile with role selection
 
@@ -202,3 +204,24 @@ class TicketHistory(models.Model):
 
     def _str_(self):
         return f"{self.incident.title} - {self.action}"
+    
+class ScreenRecording(models.Model):
+    is_recording = models.BooleanField(default=False)
+    file_path = models.CharField(max_length=255, null=True)
+    incident = models.IntegerField(null=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    def is_archivable(self):
+        return now() > self.uploaded_at + timedelta(days=90)
+
+class KnoxAuthtoken(models.Model):
+    digest = models.CharField(primary_key=True, max_length=128)
+    created = models.DateTimeField()
+    user = models.ForeignKey(UserProfile, models.CASCADE, null=True, blank=True, db_column='user_id')
+    expiry = models.DateTimeField(blank=True, null=True)
+    token_key = models.CharField(max_length=8, null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = 'knox_authtoken'

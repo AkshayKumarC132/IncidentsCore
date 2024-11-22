@@ -19,6 +19,8 @@ env/
 ENV/
 *.egg-info/
 .eggs/
+.venv/
+
 
 # IDE specific files
 .vscode/

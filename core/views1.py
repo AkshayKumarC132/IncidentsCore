@@ -44,6 +44,13 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from core.management.ml_model.MLModel import IncidentMLModel
 from core.orchestration.OrchestrationLayer import OrchestrationLayer
+import pyautogui
+import time
+import cv2
+import numpy as np
+import os
+import subprocess
+from knox.models import AuthToken
 
 
 @api_view(['POST'])
@@ -130,38 +137,43 @@ class LoginViewAPI(APIView):
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                # Get or create the token for the user
-                token, created = Token.objects.get_or_create(user=user)
+                try:
+                    token_instance, token = AuthToken.objects.create(user)
+                    print(token_instance)
+                    print(token)
+                except Exception as e:
+                    print("Error creating token:", e)
+                    return Response({'message': "Failed to create token"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-                profile = UserProfile.objects.filter(
-                    username=username).values()
+                # Retrieve user profile
+                profile = UserProfile.objects.filter(username=username).values()
+
                 return Response(
                     {
-                        'message': "Login Successfull",
+                        'message': "Login Successful",
                         "data": profile,
-                        'token': token.key,  # Return the token
-                    }
+                        'token': token,  # Return the token
+                    },
+                    status=status.HTTP_200_OK,
                 )
             else:
                 return Response({'message': "Invalid username or password"}, status=status.HTTP_401_UNAUTHORIZED)
 
-
 class LogoutViewAPI(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]  # Only authenticated users can log out
 
     def post(self, request):
-        try:
-            up = UserProfile.objects.get(username=request.user)
-            token = Token.objects.get(user=up)
-            # Get the token from the request
-            # token = request.auth
-            # Check if the token exists
-            if token:
-                token.delete()  # Delete the token
-            return Response({'message': 'Logout successful.'})
-        except Exception as e:
-            return Response({'error': str(e)}, status=400)
-
+        # Retrieve the user's token instance from the request
+        auth_token_instance = request.auth  # Knox sets the AuthToken object in request.auth
+        if auth_token_instance:
+            try:
+                # Delete the token from the database
+                auth_token_instance.delete()
+                return Response({"message": "Logout successful"}, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response({"message": f"Error during logout: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            return Response({"message": "Invalid token or already logged out"}, status=status.HTTP_400_BAD_REQUEST)
 # View to List and Create Integration Types (Admin or Superuser access)
 
 
@@ -1529,6 +1541,80 @@ def get_assigned_tickets(request):
             'severity': ticket.severity.level,
             'assigned_at': ticket.assigned_at,
             'created_at': ticket.created_at,
+            'is_recording':False
         } for ticket in tickets
     ]
     return Response(ticket_data)
+
+def dashboard_n(request):
+    tickets = Incident.objects.filter(human_intervention_needed=True, resolved=False)
+    return render(request, 'screen_recorder.html', {'tickets': tickets})
+
+def upload_page(request):
+    return render(request, 'upload_recorded_file.html')
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def start_recording(request):
+    ticket_id = request.data.get('ticket_id')
+
+    # ScreenRecording.objects.create(is_recording = True, incident = ticket_id)
+    # Logic to initialize recording session
+    return Response({"status": "Recording started", "ticket_id": ticket_id})
+
+@api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+def stop_recording(request):
+    ticket_id = request.data.get('ticket_id')
+    # Logic to finalize recording session
+    return Response({"status": "Recording stopped", "ticket_id": ticket_id})
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_recording_chunk(request):
+    print("Hereee")
+    ticket_id = request.data.get('ticket_id')
+    file = request.FILES.get('file')
+
+    if not file:
+        return Response({"error": "No file uploaded"}, status=400)
+
+    # Define the directory and file path
+    directory_path = f'recordings/{ticket_id}'
+    os.makedirs(directory_path, exist_ok=True)  # Ensure the directory exists
+
+    chunk_path = os.path.join(directory_path, file.name)
+
+    # Save the uploaded chunk
+    with open(chunk_path, 'wb') as f:
+        for chunk in file.chunks():
+            f.write(chunk)
+
+    return Response({"status": "Chunk uploaded successfully", "ticket_id": ticket_id})
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@csrf_exempt
+def finalize_recording(request):
+    if request.method == 'POST':
+        ticket_id = request.POST.get('ticket_id')
+        upload_dir = f'recordings/{ticket_id}/'
+        input_file = os.path.join(upload_dir, 'blob')
+        output_file = os.path.join(upload_dir, 'recording_final.mp4')
+
+        if not os.path.exists(input_file):
+            return JsonResponse({"error": "Input file does not exist"}, status=400)
+
+        try:
+            # Use FFmpeg to convert WebM to MP4
+            subprocess.run(
+                ['ffmpeg', '-i', input_file, '-c:v', 'libx264', '-preset', 'fast', '-c:a', 'aac', output_file],
+                check=True
+            )
+            return JsonResponse({"status": "success", "file": output_file})
+        except subprocess.CalledProcessError as e:
+            return JsonResponse({"error": f"Video conversion failed: {str(e)}"}, status=500)
+    else:
+        return JsonResponse({"error": "Invalid request method"}, status=405)

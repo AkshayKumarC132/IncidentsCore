@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +27,7 @@ SECRET_KEY = 'django-insecure-544!p1hn*4-5wf2)b+y+(t8$w)8p)sh4o!fu^^ecdg@$%ddbgs
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*','127.0.0.1','localhost']
+ALLOWED_HOSTS = ['*','127.0.0.1','localhost','172.16.16.64',"https://incident.stratapps.com","https://hask.app","hask.app"]
 
 AUTH_USER_MODEL = "core.UserProfile"
 
@@ -44,18 +45,34 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework.authtoken',  # Add this for token authentication
+
+    'knox',
 ]
 
+# REST_FRAMEWORK = {
+#     'DEFAULT_AUTHENTICATION_CLASSES': (
+#         'rest_framework.authentication.TokenAuthentication',
+#         'rest_framework.authentication.SessionAuthentication',
+#         # Other authentication classes if needed
+#     ),
+#     'DEFAULT_PERMISSION_CLASSES': (
+#         'rest_framework.permissions.IsAuthenticated',
+#     ),
+# }
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework.authentication.TokenAuthentication',
+        'knox.auth.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
-        # Other authentication classes if needed
+        'rest_framework.authentication.BasicAuthentication',
     ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
-    ),
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',  # Require authentication by default
+    ],
 }
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 
 MIDDLEWARE = [
@@ -69,6 +86,24 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
 ]
+
+REST_KNOX = {
+  'SECURE_HASH_ALGORITHM': 'cryptography.hazmat.primitives.hashes.SHA512',
+  'AUTH_TOKEN_CHARACTER_LENGTH': 8,
+  'TOKEN_TTL': timedelta(minutes=120),
+  'USER_SERIALIZER': 'knox.serializers.UserSerializer',
+  'TOKEN_LIMIT_PER_USER': None,
+  'AUTO_REFRESH': False,
+#   'EXPIRY_DATETIME_FORMAT': api_settings.DATETME_FORMAT,
+}
+
+
+REST_KNOX = {
+    'TOKEN_TTL': None,  # Tokens don't expire by default
+    'TOKEN_LIMIT_PER_USER': None,  # No limit to tokens per user
+    'HASH_ALGORITHM': 'sha256',  # Use SHA256 instead of SHA512
+    'AUTH_HEADER_PREFIX': 'Token',
+}
 
 ROOT_URLCONF = 'incidentmanagement.urls'
 
@@ -120,6 +155,12 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+]
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
@@ -164,10 +205,14 @@ CORS_ALLOW_ALL_ORIGINS = True  # Use this for development
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:5000",
+    "https://hask.app",
+    "https://incident.stratapps.com"
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:4200'
+    'http://localhost:4200',
+    "https://hask.app",
+    "https://incident.stratapps.com"
 ]
 
 

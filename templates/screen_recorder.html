@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Recorder with Upload</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+        }
+        h3 {
+            color: #333;
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #ddd;
+        }
+        button:active {
+            background-color: #bbb;
+        }
+        button#startBtn {
+            background-color: #28a745;
+            color: white;
+        }
+        button#stopBtn {
+            background-color: #dc3545;
+            color: white;
+        }
+        button#finalizeBtn {
+            background-color: #007bff;
+            color: white;
+        }
+        .status {
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <h3>Screen Recorder</h3>
+    <input type="text" id="ticketIdInput" placeholder="Enter Ticket ID" />
+    <button id="startBtn" onclick="startRecording()">Start Recording</button>
+    <button id="stopBtn" onclick="stopRecording()" disabled>Stop Recording</button>
+    <button id="finalizeBtn" onclick="finalizeRecording()" disabled>Finalize Recording</button>
+    <div class="status">
+        <label for="status">Status:</label>
+        <p id="status">Ready to Record</p>
+    </div>
+    <script>
+        let mediaRecorder;
+        let recordedChunks = [];
+        let uploadInterval;
+        let mediaStream;
+        const uploadUrl = "/api/upload_recording/";
+
+        function startRecording() {
+            const ticketId = document.getElementById("ticketIdInput").value;
+            if (!ticketId) {
+                alert("Please enter a Ticket ID before starting the recording.");
+                return;
+            }
+
+            navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+                .then(stream => {
+                    mediaStream = stream;
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+                    mediaRecorder.ondataavailable = event => {
+                        if (event.data.size > 0) {
+                            recordedChunks.push(event.data);
+                        }
+                    };
+
+                    mediaRecorder.onstart = () => {
+                        console.log("Recording started");
+                        uploadChunks(ticketId);
+                        document.getElementById("status").innerText = "Recording in progress...";
+                        document.getElementById("startBtn").disabled = true;
+                        document.getElementById("stopBtn").disabled = false;
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        console.log("Recording stopped");
+                        clearInterval(uploadInterval);
+                        uploadRemainingChunks(ticketId);
+                        recordedChunks = [];
+                        if (mediaStream) {
+                            mediaStream.getTracks().forEach(track => track.stop());
+                        }
+                        document.getElementById("status").innerText = "Recording stopped. Ready to finalize.";
+                        document.getElementById("startBtn").disabled = false;
+                        document.getElementById("stopBtn").disabled = true;
+                        document.getElementById("finalizeBtn").disabled = false;
+                    };
+
+                    mediaRecorder.start(1000); // Send data every second
+                })
+                .catch(error => console.error("Error starting recording:", error));
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                console.log("Recording stopped");
+            }
+        }
+
+        function uploadChunks(ticketId) {
+            uploadInterval = setInterval(() => {
+                if (recordedChunks.length > 0) {
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    const formData = new FormData();
+                    formData.append("file", blob);
+                    formData.append("ticket_id", ticketId);
+
+                    fetch(uploadUrl, {
+                        method: "POST",
+                        body: formData,
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log("Uploaded chunk:", data);
+                            recordedChunks = []; // Clear the chunks after successful upload
+                        })
+                        .catch(error => console.error("Error uploading chunk:", error));
+                }
+            }, 30000); // Upload chunks every 30 seconds
+        }
+
+        function uploadRemainingChunks(ticketId) {
+            if (recordedChunks.length > 0) {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const formData = new FormData();
+                formData.append("file", blob);
+                formData.append("ticket_id", ticketId);
+
+                fetch(uploadUrl, {
+                    method: "POST",
+                    body: formData,
+                })
+                    .then(response => response.json())
+                    .then(data => console.log("Final chunks uploaded:", data))
+                    .catch(error => console.error("Error uploading final chunks:", error));
+            }
+        }
+
+        function finalizeRecording() {
+            const ticketId = document.getElementById("ticketIdInput").value;
+            if (!ticketId) {
+                alert("Please enter a Ticket ID before finalizing the recording.");
+                return;
+            }
+
+            fetch("/api/finalize_recording/", {
+                method: "POST",
+                body: JSON.stringify({ ticket_id: ticketId }),
+                headers: { "Content-Type": "application/json" },
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Finalize response:", data);
+                    document.getElementById("status").innerText = "Recording finalized.";
+                    document.getElementById("finalizeBtn").disabled = true;
+                })
+                .catch(error => console.error("Error finalizing recording:", error));
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Recorder</title>
+    <style>
+        /* General Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* Container */
+        .container {
+            width: 400px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        /* Header */
+        header h1 {
+            font-size: 24px;
+            color: #007bff;
+            margin-bottom: 20px;
+        }
+
+        /* Status Section */
+        .status {
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        .status label {
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        /* Buttons */
+        .controls button {
+            padding: 10px 20px;
+            margin: 10px 5px;
+            font-size: 16px;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #start-btn {
+            background-color: #28a745;
+        }
+
+        #stop-btn {
+            background-color: #dc3545;
+        }
+
+        #upload-btn {
+            background-color: #007bff;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        button:hover:enabled {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Screen Recorder</h1>
+        </header>
+
+        <div class="status">
+            <label for="status">Status:</label>
+            <p id="status">Ready to Record</p>
+        </div>
+
+        <div class="controls">
+            <button id="start-btn" onclick="startRecording()">Start Recording</button>
+            <button id="stop-btn" onclick="stopRecording()" disabled>Stop Recording</button>
+            <button id="upload-btn" onclick="uploadRecording()" disabled>Upload Recording</button>
+        </div>
+    </div>
+
+    <script>
+        const apiBaseUrl = "http://localhost:8000/api/";
+
+        async function startRecording() {
+            const response = await fetch(`${apiBaseUrl}start-recording/`, {
+                method: "POST",
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+            if (data.status === "success") {
+                document.getElementById("status").innerText = "Recording in progress...";
+                document.getElementById("start-btn").disabled = true;
+                document.getElementById("stop-btn").disabled = false;
+                document.getElementById("upload-btn").disabled = true;
+            } else {
+                alert(data.message);
+            }
+        }
+
+        async function stopRecording() {
+            const response = await fetch(`${apiBaseUrl}stop-recording/`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${localStorage.getItem("authToken")}`
+                }
+            });
+
+            const data = await response.json();
+            if (data.status === "success") {
+                document.getElementById("status").innerText = "Recording stopped. Ready to upload.";
+                document.getElementById("start-btn").disabled = false;
+                document.getElementById("stop-btn").disabled = true;
+                document.getElementById("upload-btn").disabled = false;
+            } else {
+                alert(data.message);
+            }
+        }
+
+        async function uploadRecording() {
+            const response = await fetch(`${apiBaseUrl}upload-recording/`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${localStorage.getItem("authToken")}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ file_path: "recordings/recording.avi" }) // Replace with dynamic file path
+            });
+
+            const data = await response.json();
+            if (data.status === "success") {
+                document.getElementById("status").innerText = "Recording uploaded successfully!";
+            } else {
+                alert(data.message);
+            }
+        }
+    </script>
+</body>
+</html>
