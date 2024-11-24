@@ -504,7 +504,7 @@ def dashboard_summary(request):
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
 
 class TeamViewSet(viewsets.ModelViewSet):
@@ -603,8 +603,13 @@ def dashboard_data_(request):
 class MspViewSet(viewsets.ReadOnlyModelViewSet):  # Use ReadOnlyModelViewSet for GET requests
     queryset = IntegrationMSPConfig.objects.all()  # You can filter by user if necessary
     serializer_class = MspSerializer
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
+    def get_queryset(self,token):
+        user = token_verification(token)
+        if user['status'] ==200:
+            user_profile = user['user'] 
+        else:
+            return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Optionally filter by the current user
         return IntegrationMSPConfig.objects.filter(user=self.request.user)

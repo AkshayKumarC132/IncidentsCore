@@ -44,10 +44,6 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from core.management.ml_model.MLModel import IncidentMLModel
 from core.orchestration.OrchestrationLayer import OrchestrationLayer
-import pyautogui
-import time
-import cv2
-import numpy as np
 import os
 import subprocess
 from knox.models import AuthToken
@@ -139,8 +135,6 @@ class LoginViewAPI(APIView):
                 login(request, user)
                 try:
                     token_instance, token = AuthToken.objects.create(user)
-                    print(token_instance)
-                    print(token)
                 except Exception as e:
                     print("Error creating token:", e)
                     return Response({'message': "Failed to create token"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -944,7 +938,7 @@ def validate_connectwise_credentials(data):
 
 @csrf_exempt
 @api_view(['GET', 'POST'])
-@permission_classes([IsAuthenticated])
+# @permission_classes([IsAuthenticated])
 def connectwise_setup(request):
     if request.method == 'POST':
         try:
@@ -1618,3 +1612,11 @@ def finalize_recording(request):
             return JsonResponse({"error": f"Video conversion failed: {str(e)}"}, status=500)
     else:
         return JsonResponse({"error": "Invalid request method"}, status=405)
+
+
+class DebugTokenView(APIView):
+    def get(self, request):
+        auth_header = request.headers.get('Authorization')
+        print(f"Authorization Header: {auth_header}")
+        return Response({"auth_header": auth_header})
+    
