@@ -605,11 +605,6 @@ class MspViewSet(viewsets.ReadOnlyModelViewSet):  # Use ReadOnlyModelViewSet for
     serializer_class = MspSerializer
     # permission_classes = [IsAuthenticated]
 
-    def get_queryset(self,token):
-        user = token_verification(token)
-        if user['status'] ==200:
-            user_profile = user['user'] 
-        else:
-            return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
+    def get_queryset(self):
         # Optionally filter by the current user
         return IntegrationMSPConfig.objects.filter(user=self.request.user)

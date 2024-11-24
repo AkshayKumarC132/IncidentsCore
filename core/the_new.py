@@ -47,6 +47,7 @@ from core.orchestration.OrchestrationLayer import OrchestrationLayer
 import os
 import subprocess
 from knox.models import AuthToken
+from incidentmanagement import settings
 
 
 
@@ -636,21 +637,34 @@ def upload_recording_chunk(request,token):
     ticket_id = request.data.get('ticket_id')
     file = request.FILES.get('file')
 
+    # Ensure the 'recordings' directory exists
+    recordings_dir = os.path.join(settings.MEDIA_ROOT, 'recordings')
+    try:
+        os.makedirs(recordings_dir, exist_ok=True)  # Create if it doesn't exist
+    except Exception as e:
+        return Response({"error": f"Could not create recordings directory: {str(e)}"}, status=500)
+
     if not file:
-        return Response({"error": "No file uploaded"}, status=400)
+        return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Define the directory and file path
-    directory_path = f'recordings/{ticket_id}'
-    os.makedirs(directory_path, exist_ok=True)  # Ensure the directory exists
+    directory_path = os.path.join(recordings_dir, str(ticket_id))
+    try:
+        os.makedirs(directory_path, exist_ok=True)  # Ensure the directory exists
+    except Exception as e:
+        return Response({"error": f"Could not create directory for ticket ID {ticket_id}: {str(e)}"}, status=500)
 
     chunk_path = os.path.join(directory_path, file.name)
 
     # Save the uploaded chunk
-    with open(chunk_path, 'wb') as f:
-        for chunk in file.chunks():
-            f.write(chunk)
+    try:
+        with open(chunk_path, 'wb') as f:
+            for chunk in file.chunks():
+                f.write(chunk)
+    except Exception as e:
+        return Response({"error": f"Failed to save file: {str(e)}"}, status=500)
 
-    return Response({"status": "Chunk uploaded successfully", "ticket_id": ticket_id})
+    return Response({"status": "Chunk uploaded successfully", "ticket_id": ticket_id}, status=status.HTTP_201_CREATED)
 
 
 
