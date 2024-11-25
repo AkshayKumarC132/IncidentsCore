@@ -290,10 +290,8 @@ def get_assigned_tickets(request,token):
         return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
     # user = request.user
     user_profile = user['user'] 
-    print(user_profile.id)
     user = UserProfile.objects.get(id=user_profile.id)
     tickets = Incident.objects.filter(assigned_agent=user, resolved=False)
-    print(tickets)
     ticket_data = [
         {
             'id': ticket.id,
@@ -626,33 +624,43 @@ def get_incident_log_details(request,token):
 
 
 @api_view(['POST'])
-def upload_recording_chunk(request,token):
+def upload_recording_chunk(request, token):
     user = token_verification(token)
-    if user['status'] ==200:
+    if user['status'] == 200:
         user = user
     else:
-        return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-    # user = request.user
-    print("Hereee")
+        return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+
     ticket_id = request.data.get('ticket_id')
     file = request.FILES.get('file')
-
-    # Ensure the 'recordings' directory exists
-    recordings_dir = os.path.join(settings.MEDIA_ROOT, 'recordings')
-    try:
-        os.makedirs(recordings_dir, exist_ok=True)  # Create if it doesn't exist
-    except Exception as e:
-        return Response({"error": f"Could not create recordings directory: {str(e)}"}, status=500)
 
     if not file:
         return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Define the directory and file path
-    directory_path = os.path.join(recordings_dir, str(ticket_id))
+    # Ensure the 'recordings' directory exists
+    recordings_dir = os.path.join(settings.MEDIA_ROOT, 'recordings', str(ticket_id))
     try:
-        os.makedirs(directory_path, exist_ok=True)  # Ensure the directory exists
+        os.makedirs(recordings_dir, exist_ok=True)
     except Exception as e:
-        return Response({"error": f"Could not create directory for ticket ID {ticket_id}: {str(e)}"}, status=500)
+        return Response({"error": f"Could not create recordings directory: {str(e)}"}, status=500)
+
+    # Save the chunk with incremental naming
+    chunk_index = len(os.listdir(recordings_dir))  # Get current chunk count
+    chunk_path = os.path.join(recordings_dir, f"chunk_{chunk_index}.bin")
+
+    try:
+        with open(chunk_path, 'wb') as f:
+            for chunk in file.chunks():
+                f.write(chunk)
+    except Exception as e:
+        return Response({"error": f"Failed to save file: {str(e)}"}, status=500)
+
+    return Response({"status": "Chunk uploaded successfully", "ticket_id": ticket_id}, status=status.HTTP_201_CREATED)
+
+    # # Extract the file extension
+    # file_name, file_extension = os.path.splitext(file.name)
+    # if not file_extension:
+    #     file_extension = ".mp4"  # Default extension if none provided
 
     chunk_path = os.path.join(directory_path, file.name)
 
@@ -1866,38 +1874,91 @@ def stop_recording(request,token):
     # Logic to finalize recording session
     return Response({"status": "Recording stopped", "ticket_id": ticket_id})
 
-
+import cv2
+import os
 
 @api_view(['POST'])
 @csrf_exempt
-def finalize_recording(request,token):
+def finalize_recording(request, token):
     user = token_verification(token)
-    if user['status'] ==200:
-        user_profile = user['user'] 
+    if user['status'] == 200:
+        user_profile = user['user']
     else:
-        return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
+        return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+
     if request.method == 'POST':
-        ticket_id = request.POST.get('ticket_id')
-        upload_dir = f'recordings/{ticket_id}/'
-        input_file = os.path.join(upload_dir, 'blob')
-        output_file = os.path.join(upload_dir, 'recording_final.mp4')
+        ticket_id = request.data.get('ticket_id')
+        upload_dir = os.path.join('logos/recordings', str(ticket_id))  # Adjust path as needed
+        concatenated_file = os.path.join(upload_dir, 'concatenated_recording.bin')
+        mp4_file_path = os.path.join(upload_dir, 'recording_final.mp4')
 
-        if not os.path.exists(input_file):
-            return JsonResponse({"error": "Input file does not exist"}, status=400)
-
+        # Concatenate chunk files
         try:
-            # Use FFmpeg to convert WebM to MP4
-            subprocess.run(
-                ['ffmpeg', '-i', input_file, '-c:v', 'libx264', '-preset', 'fast', '-c:a', 'aac', output_file],
-                check=True
+            # Ensure the upload directory exists
+            if not os.path.exists(upload_dir):
+                return JsonResponse({'error': f"Upload directory not found: Start Recording First..!!"}, status=400)
+            
+            chunk_files = sorted(
+                [os.path.join(upload_dir, f) for f in os.listdir(upload_dir) if f.startswith('chunk_') and f.endswith('.bin')]
             )
-            return JsonResponse({"status": "success", "file": output_file})
-        except subprocess.CalledProcessError as e:
-            return JsonResponse({"error": f"Video conversion failed: {str(e)}"}, status=500)
-    else:
-        return JsonResponse({"error": "Invalid request method"}, status=405)
+            print("Chunk File-------",chunk_files)
+            if not chunk_files:
+                return Response({"error": "No chunk files found in the directory"}, status=400)
 
+            print("Chunk files to concatenate:", chunk_files)
 
+            # Combine chunks into one file
+            with open(concatenated_file, 'wb') as output_file:
+                for chunk_file in chunk_files:
+                    with open(chunk_file, 'rb') as f:
+                        output_file.write(f.read())
+
+        except Exception as e:
+            return JsonResponse({'error': f"Failed to concatenate chunk files: {str(e)}"}, status=500)
+
+        print("Concatenation complete. File path:", concatenated_file)
+
+        # Convert combined file to MP4
+        try:
+            print("Converting video with OpenCV...")
+            cap = cv2.VideoCapture(concatenated_file)
+
+            # Ensure video can be opened
+            if not cap.isOpened():
+                return JsonResponse({'error': "Failed to open concatenated file"}, status=400)
+
+            # Get video properties
+            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS) or 20.0  # Fallback to 20 FPS if not set
+
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+            out = cv2.VideoWriter(mp4_file_path, fourcc, fps, (frame_width, frame_height))
+
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                out.write(frame)
+
+            cap.release()
+            out.release()
+
+            # Optionally delete the original files and concatenated file
+            for chunk_file in chunk_files:
+                os.remove(chunk_file)
+            os.remove(concatenated_file)
+
+            return JsonResponse({
+                'message': 'Recording finalized and converted to MP4',
+                'mp4_file_path': mp4_file_path
+            })
+
+        except Exception as e:
+            print(f"Conversion error: {str(e)}")
+            return JsonResponse({'error': f"Failed to convert to MP4: {str(e)}"}, status=500)
+
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 class MspViewSet(viewsets.ReadOnlyModelViewSet):  # Use ReadOnlyModelViewSet for GET requests
     queryset = IntegrationMSPConfig.objects.all()  # You can filter by user if necessary
@@ -1912,3 +1973,185 @@ class MspViewSet(viewsets.ReadOnlyModelViewSet):  # Use ReadOnlyModelViewSet for
         #     return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Optionally filter by the current user
         return IntegrationMSPConfig.objects.filter(user=self.request.user.id)
+    
+import pytesseract
+
+# Set Tesseract executable path (adjust based on your installation)
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+
+@api_view(['POST'])
+@csrf_exempt
+def extract_text_from_video(request, token):
+    user = token_verification(token)
+    if user['status'] == 200:
+        user_profile = user['user']
+    else:
+        return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == 'POST':
+        ticket_id = request.data.get('ticket_id')
+        upload_dir = os.path.join('logos/recordings', str(ticket_id))
+        video_file_path = os.path.join(upload_dir, 'recording_final.mp4')
+
+        if not os.path.exists(video_file_path):
+            return Response({"error": f"Video file does not exist at {video_file_path}"}, status=400)
+
+        try:
+            print("Loading video for text extraction...")
+            cap = cv2.VideoCapture(video_file_path)
+            print(cap)
+
+            if not cap.isOpened():
+                return JsonResponse({'error': "Failed to open video file"}, status=400)
+
+            frame_count = 0
+            extracted_text = []
+
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                # Perform OCR
+                text = pytesseract.image_to_string(gray_frame)
+                extracted_text.append({"frame": frame_count, "text": text.strip()})
+
+                frame_count += 1
+
+            cap.release()
+
+            return JsonResponse({
+                'message': 'Text extraction completed successfully',
+                'extracted_text': extracted_text
+            })
+
+        except Exception as e:
+            print(f"Error during text extraction: {str(e)}")
+            return JsonResponse({'error': f"Failed to extract text from video: {str(e)}"}, status=500)
+
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+
+# Path to Tesseract executable (update as per your setup)
+# pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+class GenerateWorkflowView(APIView):
+
+    def extract_frames(self, video_path, output_dir, interval=1):
+        """
+        Extract frames from a video at a given interval and save them as images.
+        """
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        cap = cv2.VideoCapture(video_path)
+        frame_rate = int(cap.get(cv2.CAP_PROP_FPS))  # Frames per second
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = total_frames / frame_rate  # Video duration in seconds
+
+        frame_count = 0
+        extracted_frames = []
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Extract a frame every 'interval' seconds
+            if frame_count % (frame_rate * interval) == 0:
+                timestamp = str(timedelta(seconds=int(frame_count / frame_rate)))
+                frame_path = os.path.join(output_dir, f"frame_{frame_count}.png")
+                cv2.imwrite(frame_path, frame)
+                extracted_frames.append({"frame_path": frame_path, "timestamp": timestamp})
+                # print(f"Saved frame at {timestamp}: {frame_path}")
+
+            frame_count += 1
+
+        cap.release()
+        print("Frame extraction complete.")
+        return extracted_frames
+
+    def detect_text_from_frame(self, frame_path):
+        """
+        Use OCR to detect text from a frame.
+        """
+        image = cv2.imread(frame_path)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Preprocessing for better OCR
+        _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+
+        # OCR on preprocessed frame
+        text = pytesseract.image_to_string(thresh, lang="eng")
+        return text.strip()
+
+    def infer_action_from_text(self, text):
+        """
+        Infer an action from the extracted text using simple NLP logic.
+        """
+        # Basic action inference (can be extended with NLP libraries like spaCy)
+        if "click" in text.lower():
+            return "Click"
+        elif "open" in text.lower():
+            return "Open"
+        elif "type" in text.lower():
+            return "Type"
+        elif "drag" in text.lower():
+            return "Drag"
+        else:
+            return "Unknown"
+
+    def generate_workflow(self, video_path, ticket_id, interval=1):
+        """
+        Generate a workflow script from the recorded video.
+        """
+        # Create a directory path for extracted frames based on ticket_id
+        base_dir = os.path.dirname(video_path)  # Get the directory of the video
+        output_dir = os.path.join(base_dir, "extracted_frames")
+
+        # Extract frames
+        frames = self.extract_frames(video_path, output_dir, interval)
+        workflow_steps = []
+
+        for frame_data in frames:
+            frame_path = frame_data["frame_path"]
+            timestamp = frame_data["timestamp"]
+
+            # Detect text from each frame
+            text = self.detect_text_from_frame(frame_path)
+            if text:
+                # Infer action from text
+                action = self.infer_action_from_text(text)
+                workflow_steps.append({
+                    "timestamp": timestamp,
+                    "frame": os.path.basename(frame_path),
+                    "action": action,
+                    "details": text
+                })
+
+        # Save workflow as JSON
+        workflow_script = {"workflow": workflow_steps}
+        workflow_json_path = os.path.join(output_dir, "workflow.json")
+        with open(workflow_json_path, "w") as f:
+            json.dump(workflow_script, f, indent=4)
+        print(f"Workflow saved to {workflow_json_path}")
+
+        return workflow_script
+
+    def post(self, request, *args, **kwargs):
+        ticket_id = request.data.get('ticket_id')
+        video_path = os.path.join("logos", "recordings", str(ticket_id), "recording_final.mp4")
+
+        if not os.path.exists(video_path):
+            return Response({"error": "Video not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            workflow = self.generate_workflow(video_path, ticket_id, interval=2)  # Extract frames every 2 seconds
+            return Response(workflow, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
