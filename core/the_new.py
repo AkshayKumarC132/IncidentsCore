@@ -1,9 +1,6 @@
-from rest_framework.generics import CreateAPIView
 from rest_framework.decorators import api_view
-from django.contrib.auth.models import User
 from rest_framework.response import Response
 from rest_framework import status
-from django.db import transaction
 from django.contrib.auth import authenticate, login, logout
 from django.views.decorators.csrf import csrf_exempt
 from pytz import utc
@@ -11,17 +8,13 @@ from .serializers import *
 from .models import *
 from rest_framework import status
 from django.contrib.auth.decorators import login_required
-from rest_framework import generics, permissions
-from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from rest_framework.views import APIView
 from django.db.models import Avg, Count
 from django.shortcuts import render
 from django.http import HttpResponse
-import pandas as pd
 from datetime import datetime
 from django.shortcuts import redirect
-from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
@@ -31,13 +24,7 @@ import requests
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth.hashers import make_password
-# Importing IntegrityError to handle duplicate entries
 from django.db import IntegrityError
-from rest_framework.authtoken.models import Token
-from rest_framework.permissions import AllowAny
-from django.contrib.auth import get_user_model
 from django.utils.datastructures import MultiValueDictKeyError
 import json
 from django.core.files.storage import default_storage
@@ -45,7 +32,6 @@ from django.core.files.base import ContentFile
 from core.management.ml_model.MLModel import IncidentMLModel
 from core.orchestration.OrchestrationLayer import OrchestrationLayer
 import os
-import subprocess
 from knox.models import AuthToken
 from incidentmanagement import settings
 

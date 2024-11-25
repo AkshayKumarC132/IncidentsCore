@@ -41,3 +41,4 @@ pyautogui
 opencv-python
 opencv-python-headless
 mss
+t
