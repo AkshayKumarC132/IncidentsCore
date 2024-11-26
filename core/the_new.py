@@ -35,6 +35,9 @@ import os
 from knox.models import AuthToken
 from incidentmanagement import settings
 
+# Path to Tesseract executable (update as per your setup)
+# pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 
 @api_view(['POST'])
@@ -523,8 +526,11 @@ class RunOrchestrationView(APIView):
             # Fetch the incident by ID
             incident = Incident.objects.get(id=incident_id)
 
-            # Initialize the OrchestrationLayer and dispatch the incident
-            orchestrator = OrchestrationLayer()
+            try:
+                # Initialize the OrchestrationLayer and dispatch the incident
+                orchestrator = OrchestrationLayer()
+            except Exception as e :
+                return Response({'message':str(e)})
             agent_name = orchestrator.dispatch_incident(incident)
             # orchestrator.start_listening()
             return Response({"message": "Incident {} dispatched successfully to {}".format(incident.title, agent_name)}, status=status.HTTP_200_OK)
@@ -1874,7 +1880,7 @@ def finalize_recording(request, token):
 
     if request.method == 'POST':
         ticket_id = request.data.get('ticket_id')
-        upload_dir = os.path.join('logos/recordings', str(ticket_id))  # Adjust path as needed
+        upload_dir = os.path.join(settings.BASE_DIR,'logos','recordings', str(ticket_id))  # Adjust path as needed
         concatenated_file = os.path.join(upload_dir, 'concatenated_recording.bin')
         mp4_file_path = os.path.join(upload_dir, 'recording_final.mp4')
 
@@ -1887,11 +1893,9 @@ def finalize_recording(request, token):
             chunk_files = sorted(
                 [os.path.join(upload_dir, f) for f in os.listdir(upload_dir) if f.startswith('chunk_') and f.endswith('.bin')]
             )
-            print("Chunk File-------",chunk_files)
             if not chunk_files:
                 return Response({"error": "No chunk files found in the directory"}, status=400)
 
-            print("Chunk files to concatenate:", chunk_files)
 
             # Combine chunks into one file
             with open(concatenated_file, 'wb') as output_file:
@@ -1902,11 +1906,9 @@ def finalize_recording(request, token):
         except Exception as e:
             return JsonResponse({'error': f"Failed to concatenate chunk files: {str(e)}"}, status=500)
 
-        print("Concatenation complete. File path:", concatenated_file)
 
         # Convert combined file to MP4
         try:
-            print("Converting video with OpenCV...")
             cap = cv2.VideoCapture(concatenated_file)
 
             # Ensure video can be opened
@@ -1941,7 +1943,6 @@ def finalize_recording(request, token):
             })
 
         except Exception as e:
-            print(f"Conversion error: {str(e)}")
             return JsonResponse({'error': f"Failed to convert to MP4: {str(e)}"}, status=500)
 
     return JsonResponse({'error': 'Invalid request method'}, status=405)
@@ -1962,10 +1963,6 @@ class MspViewSet(viewsets.ReadOnlyModelViewSet):  # Use ReadOnlyModelViewSet for
     
 import pytesseract
 
-# Set Tesseract executable path (adjust based on your installation)
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
-
 @api_view(['POST'])
 @csrf_exempt
 def extract_text_from_video(request, token):
@@ -1977,7 +1974,7 @@ def extract_text_from_video(request, token):
 
     if request.method == 'POST':
         ticket_id = request.data.get('ticket_id')
-        upload_dir = os.path.join('logos/recordings', str(ticket_id))
+        upload_dir = os.path.join(settings.BASE_DIR,'logos','recordings', str(ticket_id))
         video_file_path = os.path.join(upload_dir, 'recording_final.mp4')
 
         if not os.path.exists(video_file_path):
@@ -1986,7 +1983,6 @@ def extract_text_from_video(request, token):
         try:
             print("Loading video for text extraction...")
             cap = cv2.VideoCapture(video_file_path)
-            print(cap)
 
             if not cap.isOpened():
                 return JsonResponse({'error': "Failed to open video file"}, status=400)
@@ -2021,9 +2017,6 @@ def extract_text_from_video(request, token):
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 
-# Path to Tesseract executable (update as per your setup)
-# pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 class GenerateWorkflowView(APIView):
 
@@ -2130,7 +2123,7 @@ class GenerateWorkflowView(APIView):
 
     def post(self, request, *args, **kwargs):
         ticket_id = request.data.get('ticket_id')
-        video_path = os.path.join("logos", "recordings", str(ticket_id), "recording_final.mp4")
+        video_path = os.path.join(settings.BASE_DIR,"logos", "recordings", str(ticket_id), "recording_final.mp4")
 
         if not os.path.exists(video_path):
             return Response({"error": "Video not found"}, status=status.HTTP_404_NOT_FOUND)

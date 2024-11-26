@@ -325,8 +325,8 @@ REST_FRAMEWORK = {
 
 # Knox-specific settings
 REST_KNOX = {
-    # 'SECURE_HASH_ALGORITHM': 'cryptography.hazmat.primitives.hashes.SHA256',
-    'SECURE_HASH_ALGORITHM': 'hashlib.sha512',
+    'SECURE_HASH_ALGORITHM': 'cryptography.hazmat.primitives.hashes.SHA256',
+    # 'SECURE_HASH_ALGORITHM': 'hashlib.sha512',
     'AUTH_TOKEN_CHARACTER_LENGTH': 8,
     'TOKEN_TTL': timedelta(minutes=120),
     'USER_SERIALIZER': 'knox.serializers.UserSerializer',

@@ -11,20 +11,26 @@ from django.utils import timezone
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.mail import send_mail
 
-class OrchestrationLayer:
+class OrchestrationLayer():
+
     def __init__(self):
+        try:
         # Initialize agents
-        self.agents = {
-            'network': NetworkAgent(),
-            'security': SecurityAgent(),
-            'hardware': HardwareAgent(),
-            'software': SoftwareAgent(),
-            'human': HumanAgent()  # Human agent for unhandled incidents
-        }
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-        self.channel = self.connection.channel()
-        self.channel.queue_declare(queue='task_queue', durable=True)
-        self.ml_model = IncidentMLModel()
+            self.agents = {
+                'network': NetworkAgent(),
+                'security': SecurityAgent(),
+                'hardware': HardwareAgent(),
+                'software': SoftwareAgent(),
+                'human': HumanAgent()  # Human agent for unhandled incidents
+            }
+            self.connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+            self.channel = self.connection.channel()
+            self.channel.queue_declare(queue='task_queue', durable=True)
+            self.ml_model = IncidentMLModel()
+        except Exception as e:
+
+            print(str(e))
+            # return str(e)
 
     def send_email_notification(self, agent_type, incident):
         """Send an email notification when a ticket is assigned to a human agent."""
@@ -64,82 +70,88 @@ class OrchestrationLayer:
         return Incident.objects.filter(resolved=False).select_related('severity')
 
     def map_incident_to_agent(self, incident):
-        """Map an incident to the appropriate agent based on prediction or keywords."""
-        # Prepare data for the ML model
-        incident_data = {
-            'severity_id': incident.severity.id,
-            'device_id': incident.device.id,
-            'description': incident.description
-        }
-        recommended_solution = self.ml_model.predict_solution(incident_data)
+        try:
+            print("This is Incident Data=========", incident)
+            """Map an incident to the appropriate agent based on prediction or keywords."""
+            # Prepare data for the ML model
+            incident_data = {
+                'severity_id': incident.severity.id,
+                'device_id': incident.device.id,
+                'description': incident.description
+            }
+            recommended_solution = self.ml_model.predict_solution(incident_data)
 
-        if recommended_solution == "Human Intervention Needed":
-            print("Need Human")
-            incident.human_intervention_needed = True
+            if recommended_solution == "Human Intervention Needed":
+                incident.human_intervention_needed = True
+                incident.save()
+                return 'human'
+
+            # Reset if not needed
+            incident.human_intervention_needed = False
             incident.save()
-            return 'human'
 
-        # Reset if not needed
-        incident.human_intervention_needed = False
-        incident.save()
-
-        # Determine agent type
-        if "network" in incident.title.lower() or "network" in incident.description.lower():
-            return 'network'
-        elif "security" in incident.title.lower() or "security" in incident.description.lower():
-            return 'security'
-        elif "hardware" in incident.title.lower() or "hardware" in incident.description.lower():
-            return 'hardware'
-        else:
-            return 'software'
+            # Determine agent type
+            if "network" in incident.title.lower() or "network" in incident.description.lower():
+                return 'network'
+            elif "security" in incident.title.lower() or "security" in incident.description.lower():
+                return 'security'
+            elif "hardware" in incident.title.lower() or "hardware" in incident.description.lower():
+                return 'hardware'
+            else:
+                return 'software'
+        except Exception as e:
+            return str(e)
 
     def dispatch_incident(self, incident):
-        """Dispatch the incident to the appropriate agent and log the action."""
-        agent_type = self.map_incident_to_agent(incident)
+        try:
+            """Dispatch the incident to the appropriate agent and log the action."""
+            agent_type = self.map_incident_to_agent(incident)
 
-        # Find or assign an agent
-        assigned_agent = None
-        if agent_type == 'human':
-            # Example: Fetch the first available human agent (modify as per your logic)
-            assigned_agent = UserProfile.objects.filter(role='human_agent', is_active=True).first()
-            if assigned_agent:
-                incident.assigned_agent = assigned_agent
-                incident.assigned_at = timezone.now()
-                incident.save()
+            # Find or assign an agent
+            assigned_agent = None
+            if agent_type == 'human':
+                # Example: Fetch the first available human agent (modify as per your logic)
+                assigned_agent = UserProfile.objects.filter(role='human_agent', is_active=True).first()
+                if assigned_agent:
+                    incident.assigned_agent = assigned_agent
+                    incident.assigned_at = timezone.now()
+                    incident.save()
 
-        # Log the assignment
-        log_entry = IncidentLog.objects.create(
-            incident=incident,
-            assigned_agent=agent_type,
-            assigned_at=timezone.now()
-        )
+            # Log the assignment
+            log_entry = IncidentLog.objects.create(
+                incident=incident,
+                assigned_agent=agent_type,
+                assigned_at=timezone.now()
+            )
 
-        # Prepare task data
-        task_data = {
-            'incident_id': incident.id,
-            'title': incident.title,
-            'description': incident.description,
-            'severity': incident.severity.level,
-            'agent_type': agent_type,
-            'task_description': f"Resolve incident: {incident.title}",
-            'log_id': log_entry.id,
-            'human_intervention_needed': True if agent_type == 'human' else False,
-            'assigned_agent_id': assigned_agent.id if assigned_agent else None
-        }
-        # Send task to RabbitMQ
-        self.channel.basic_publish(
-            exchange='',
-            routing_key='task_queue',
-            body=json.dumps(task_data),
-            properties=pika.BasicProperties(delivery_mode=2)  # Persistent message
-        )
-        print(f"Dispatched incident {incident.title} to {agent_type} agent.")
+            # Prepare task data
+            task_data = {
+                'incident_id': incident.id,
+                'title': incident.title,
+                'description': incident.description,
+                'severity': incident.severity.level,
+                'agent_type': agent_type,
+                'task_description': f"Resolve incident: {incident.title}",
+                'log_id': log_entry.id,
+                'human_intervention_needed': True if agent_type == 'human' else False,
+                'assigned_agent_id': assigned_agent.id if assigned_agent else None
+            }
+            # Send task to RabbitMQ
+            self.channel.basic_publish(
+                exchange='',
+                routing_key='task_queue',
+                body=json.dumps(task_data),
+                properties=pika.BasicProperties(delivery_mode=2)  # Persistent message
+            )
+            print(f"Dispatched incident {incident.title} to {agent_type} agent.")
 
-        # Notify human agent if applicable
-        # if agent_type == 'human' and assigned_agent:
-        #     send_email_notification(assigned_agent.email, incident.title)  # Replace with dynamic email fetching
-        return agent_type
-
+            # Notify human agent if applicable
+            # if agent_type == 'human' and assigned_agent:
+            #     send_email_notification(assigned_agent.email, incident.title)  # Replace with dynamic email fetching
+            return agent_type
+        except Exception as e:
+             return str(e)
+        
     def process_unresolved_incidents(self):
         """Fetch and dispatch unresolved incidents."""
         incidents = self.get_unresolved_incidents()

@@ -40,3 +40,4 @@ class Command(BaseCommand):
             print("Models saved successfully.")
         else:
             print("No incidents available for training.")
+# python manage.py train_incident_model

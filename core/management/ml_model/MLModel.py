@@ -9,7 +9,7 @@ import joblib
 import os
 from sklearn.utils.validation import NotFittedError
 
-class IncidentMLModel:
+class IncidentMLModel():
     def __init__(self):
         self.time_model = None
         self.solution_model = None
@@ -60,8 +60,8 @@ class IncidentMLModel:
             return
 
         # Vectorize the 'description' column
-        descriptions = data['description'].fillna('')
-        self.vectorizer = TfidfVectorizer()
+        descriptions = data['description'].fillna("No description provided").replace('', "No description provided")
+        self.vectorizer = TfidfVectorizer(min_df=1, stop_words=None)
         description_vectors = self.vectorizer.fit_transform(descriptions)
 
         # Concatenate vectorized descriptions with other numeric features
@@ -107,12 +107,23 @@ class IncidentMLModel:
     def load_model(self):
         if os.path.exists('time_model.pkl'):
             self.time_model = joblib.load('time_model.pkl')
+        else:
+            print("time_model.pkl not found. Please train the model.")
+        
         if os.path.exists('solution_model.pkl'):
             self.solution_model = joblib.load('solution_model.pkl')
+        else:
+            print("solution_model.pkl not found. Please train the model.")
+        
         if os.path.exists('le_solution.pkl'):
             self.le_solution = joblib.load('le_solution.pkl')
+        else:
+            print("le_solution.pkl not found. Please train the model.")
+        
         if os.path.exists('vectorizer.pkl'):
             self.vectorizer = joblib.load('vectorizer.pkl')
+        else:
+            print("vectorizer.pkl not found. Please train the model.")
 
     def predict_time(self, incident_data):
         # Ensure column order and types match training data
@@ -143,13 +154,22 @@ class IncidentMLModel:
             return 1.0  # Default value if prediction fails
 
     def predict_solution(self, incident_data):
+        
+        if not self.vectorizer:
+            print("Vectorizer is not loaded. Please train the model first.")
+            return "Human Intervention Needed"
+
         data = pd.DataFrame([{
             'severity_id': incident_data['severity_id'],
             'device_id': incident_data['device_id'],
             'description': incident_data.get('description', '')
         }])
 
-        description_vectorized = self.vectorizer.transform(data['description']).toarray()
+        try:
+            description_vectorized = self.vectorizer.transform(data['description']).toarray()
+        except Exception as e:
+            print(f"Error during vectorization: {e}")
+            return "Human Intervention Needed"
 
         prediction_data = pd.concat([
             data[['severity_id', 'device_id']].reset_index(drop=True), 
