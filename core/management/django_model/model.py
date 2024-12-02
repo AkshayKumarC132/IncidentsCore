@@ -138,6 +138,7 @@ class Incident(models.Model):
         UserProfile, on_delete=models.SET_NULL, null=True, related_name='assigned_incidents')
     assigned_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    pagent = models.CharField(max_length=50, null=True, blank=True)  # New column for Predicted Agent
 
     def _str_(self):
         return self.title

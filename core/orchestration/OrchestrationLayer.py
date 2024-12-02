@@ -91,11 +91,20 @@ class OrchestrationLayer():
             incident.save()
 
             # Determine agent type
-            if "network" in incident.title.lower() or "network" in incident.description.lower():
+            if ("network" in incident.title.lower() or 
+                "network" in incident.description.lower() or 
+                "network" in incident.recommended_solution.lower() or
+                "network" in incident.pagent.lower()):
                 return 'network'
-            elif "security" in incident.title.lower() or "security" in incident.description.lower():
+            elif ("security" in incident.title.lower() or 
+                  "security" in incident.description.lower() or 
+                  "security" in incident.recommended_solution.lower() or
+                  "security" in incident.pagent.lower()):
                 return 'security'
-            elif "hardware" in incident.title.lower() or "hardware" in incident.description.lower():
+            elif ("hardware" in incident.title.lower() or 
+                  "hardware" in incident.description.lower() or 
+                  "hardware" in incident.recommended_solution.lower() or
+                  "hardware" in incident.pagent.lower()):
                 return 'hardware'
             else:
                 return 'software'

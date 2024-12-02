@@ -8,6 +8,7 @@ from core.models import Incident
 import joblib
 import os
 from sklearn.utils.validation import NotFittedError
+from incidentmanagement import settings
 
 class IncidentMLModel():
     def __init__(self):
@@ -15,6 +16,7 @@ class IncidentMLModel():
         self.solution_model = None
         self.le_solution = None  # Label encoder for solutions
         self.vectorizer = None  # TF-IDF vectorizer for text data
+        self.model_dir = os.path.join(settings.BASE_DIR, 'trained_models')  # Define the model directory
         self.load_model()  # Load saved models and encoders if available
 
     def train(self):
@@ -98,30 +100,31 @@ class IncidentMLModel():
         self.save_model()
 
     def save_model(self):
-        joblib.dump(self.time_model, 'time_model.pkl')
-        joblib.dump(self.solution_model, 'solution_model.pkl')
-        joblib.dump(self.le_solution, 'le_solution.pkl')
-        joblib.dump(self.vectorizer, 'vectorizer.pkl')
+        os.makedirs(self.model_dir, exist_ok=True)  # Create the model directory if it doesn't exist
+        joblib.dump(self.time_model, os.path.join(self.model_dir, 'time_model.pkl'))
+        joblib.dump(self.solution_model, os.path.join(self.model_dir, 'solution_model.pkl'))
+        joblib.dump(self.le_solution, os.path.join(self.model_dir, 'le_solution.pkl'))
+        joblib.dump(self.vectorizer, os.path.join(self.model_dir, 'vectorizer.pkl'))
         print("Models and encoders saved successfully.")
 
     def load_model(self):
-        if os.path.exists('time_model.pkl'):
-            self.time_model = joblib.load('time_model.pkl')
+        if os.path.exists(os.path.join(self.model_dir, 'time_model.pkl')):
+            self.time_model = joblib.load(os.path.join(self.model_dir, 'time_model.pkl'))
         else:
             print("time_model.pkl not found. Please train the model.")
         
-        if os.path.exists('solution_model.pkl'):
-            self.solution_model = joblib.load('solution_model.pkl')
+        if os.path.exists(os.path.join(self.model_dir, 'solution_model.pkl')):
+            self.solution_model = joblib.load(os.path.join(self.model_dir, 'solution_model.pkl'))
         else:
             print("solution_model.pkl not found. Please train the model.")
         
-        if os.path.exists('le_solution.pkl'):
-            self.le_solution = joblib.load('le_solution.pkl')
+        if os.path.exists(os.path.join(self.model_dir, 'le_solution.pkl')):
+            self.le_solution = joblib.load(os.path.join(self.model_dir, 'le_solution.pkl'))
         else:
             print("le_solution.pkl not found. Please train the model.")
         
-        if os.path.exists('vectorizer.pkl'):
-            self.vectorizer = joblib.load('vectorizer.pkl')
+        if os.path.exists(os.path.join(self.model_dir, 'vectorizer.pkl')):
+            self.vectorizer = joblib.load(os.path.join(self.model_dir, 'vectorizer.pkl'))
         else:
             print("vectorizer.pkl not found. Please train the model.")
 

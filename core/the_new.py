@@ -34,10 +34,11 @@ from core.orchestration.OrchestrationLayer import OrchestrationLayer
 import os
 from knox.models import AuthToken
 from incidentmanagement import settings
+import pytesseract
 
 # Path to Tesseract executable (update as per your setup)
-# pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
+# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 
 @api_view(['POST'])
@@ -408,7 +409,7 @@ def save_integration_config(request,token):
             
             # Only save if the response is successful
             if response.status_code != 200:
-                return HttpResponse(f"Failed to save configuration: {response.json()}", status=400)
+                return HttpResponse(f"Failed to save configuration: {response.json()}", status=status.HTTP_400_BAD_REQUEST)
             
         elif type_instance.name == 'HaloPSA':
             headers = {
@@ -420,7 +421,7 @@ def save_integration_config(request,token):
             
             # Only save if the response is successful
             if response.status_code != 200:
-                return HttpResponse(f"Failed to save configuration: {response.json()}", status=400)
+                return HttpResponse(f"Failed to save configuration: {response.json()}", status=status.HTTP_400_BAD_REQUEST)
             
             # Extract tokens from response JSON
             tokens_data = response.json()
@@ -508,9 +509,9 @@ def save_integration_config(request,token):
             config.save()
             return redirect('dashboard')  # Replace 'dashboard_view' with the actual name of your dashboard URL pattern
         except Exception as e:
-            return HttpResponse(f"Failed to save configuration: {str(e)}", status=400)
+            return HttpResponse(f"Failed to save configuration: {str(e)}", status=status.HTTP_400_BAD_REQUEST)
 
-    return HttpResponse("Invalid request method.", status=405)
+    return HttpResponse("Invalid request method.", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 
@@ -634,7 +635,7 @@ def upload_recording_chunk(request, token):
     try:
         os.makedirs(recordings_dir, exist_ok=True)
     except Exception as e:
-        return Response({"error": f"Could not create recordings directory: {str(e)}"}, status=500)
+        return Response({"error": f"Could not create recordings directory: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # Save the chunk with incremental naming
     chunk_index = len(os.listdir(recordings_dir))  # Get current chunk count
@@ -645,7 +646,7 @@ def upload_recording_chunk(request, token):
             for chunk in file.chunks():
                 f.write(chunk)
     except Exception as e:
-        return Response({"error": f"Failed to save file: {str(e)}"}, status=500)
+        return Response({"error": f"Failed to save file: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return Response({"status": "Chunk uploaded successfully", "ticket_id": ticket_id}, status=status.HTTP_201_CREATED)
 
@@ -662,7 +663,7 @@ def upload_recording_chunk(request, token):
             for chunk in file.chunks():
                 f.write(chunk)
     except Exception as e:
-        return Response({"error": f"Failed to save file: {str(e)}"}, status=500)
+        return Response({"error": f"Failed to save file: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return Response({"status": "Chunk uploaded successfully", "ticket_id": ticket_id}, status=status.HTTP_201_CREATED)
 
@@ -1307,6 +1308,7 @@ def validate_connectwise_credentials(data):
 
 # Utility function for creating Integration configuration
 def create_integration_msp_config(user, type, data, response):
+    print(user, type, data, response)
     try:
         # Fetch or create IntegrationType
         integration_type, _ = IntegrationType.objects.get_or_create(name=type)
@@ -1439,7 +1441,7 @@ def fetch_connectwise_data(config):
                                 device=device,  # Associate with the Device
                                 severity=severity,  # Associate with the Severity
                                 defaults={
-                                    'description': incident_data.get('description', ''),
+                                    'description': incident_data.get('description', incident_data.get('summary','')),
                                     'resolved': incident_data.get('status', {}).get('name', '') == 'Closed',
                                     'recommended_solution': incident_data.get('resolution', ''),
                                     'predicted_resolution_time': incident_data.get('estimatedResolutionTime', None)
@@ -1505,25 +1507,29 @@ def connectwise_setup(request,token):
                 'public_key': public_key,
                 'private_key': private_key,
             })
+            print(is_valid, response_data)
+
 
             if is_valid:
                 # Save configuration if valid
                 config, created = create_integration_msp_config(
-                    user=request.user,
+                    user=user_profile,
                     type='ConnectWise',
                     data=data,
                     response=response_data
                 )
+                print(config)
+                print(created)
                 # Fetch additional data after saving the configuration
                 fetch_connectwise_data(config)
 
                 return JsonResponse({"status": "success", "message": "ConnectWise configuration saved"})
             else:
-                return JsonResponse({"status": "failed", "message": "Invalid ConnectWise credentials", "data": response_data}, status=400)
+                return JsonResponse({"status": "failed", "message": "Invalid ConnectWise credentials", "data": response_data}, status=status.HTTP_400_BAD_REQUEST)
         except MultiValueDictKeyError as e:
-            return JsonResponse({'error': f'Missing key: {str(e)}'}, status=400)
+            return JsonResponse({'error': f'Missing key: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     elif request.method == 'GET':
         user = token_verification(token)
         if user['status'] ==200:
@@ -1548,13 +1554,13 @@ def connectwise_setup(request,token):
                     }
                 })
             else:
-                return JsonResponse({"status": "failed", "message": "No ConnectWise configuration found"}, status=404)
+                return JsonResponse({"status": "failed", "message": "No ConnectWise configuration found"}, status=status.HTTP_404_NOT_FOUND)
 
         except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
+            return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     else:
-        return JsonResponse({'error': 'Invalid request method'}, status=405)
+        return JsonResponse({'error': 'Invalid request method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 # HaloPSA Configuration
@@ -1676,7 +1682,7 @@ def fetch_halopsa_data(config):
                                 device=device,  # Associate with the Device
                                 severity=severity,  # Associate with the Severity
                                 defaults={
-                                    'description': incident_data.get('description', ''),
+                                    'description': incident_data.get('description', incident_data.get('summary','')),
                                     'resolved': incident_data.get('status', '') == 'Closed',
                                     'recommended_solution': incident_data.get('resolution', ''),
                                     'predicted_resolution_time': incident_data.get('estimatedResolutionTime', None)
@@ -1741,7 +1747,7 @@ def halopsa_setup(request,token):
             fetch_halopsa_data(config)
             return JsonResponse({"status": "success", "message": "HaloPSA configuration saved"})
         else:
-            return JsonResponse({"status": "failed", "message": "Invalid HaloPSA credentials", "data": response_data}, status=400)
+            return JsonResponse({"status": "failed", "message": "Invalid HaloPSA credentials", "data": response_data}, status=status.HTTP_400_BAD_REQUEST)
 
 
 
@@ -1869,83 +1875,86 @@ def stop_recording(request,token):
 import cv2
 import os
 
-@api_view(['POST'])
-@csrf_exempt
-def finalize_recording(request, token):
-    user = token_verification(token)
-    if user['status'] == 200:
-        user_profile = user['user']
-    else:
-        return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+# @api_view(['POST'])
+# @csrf_exempt
+# def finalize_recording(request, token):
+#     user = token_verification(token)
+#     if user['status'] == 200:
+#         user_profile = user['user']
+#     else:
+#         return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
 
-    if request.method == 'POST':
-        ticket_id = request.data.get('ticket_id')
-        upload_dir = os.path.join(settings.BASE_DIR,'logos','recordings', str(ticket_id))  # Adjust path as needed
-        concatenated_file = os.path.join(upload_dir, 'concatenated_recording.bin')
-        mp4_file_path = os.path.join(upload_dir, 'recording_final.mp4')
+#     if request.method == 'POST':
+#         ticket_id = request.data.get('ticket_id')
+#         upload_dir = os.path.join(settings.BASE_DIR,'logos','recordings', str(ticket_id))  # Adjust path as needed
+#         concatenated_file = os.path.join(upload_dir, 'concatenated_recording.bin')
+#         mp4_file_path = os.path.join(upload_dir, 'recording_final.mp4')
 
-        # Concatenate chunk files
-        try:
-            # Ensure the upload directory exists
-            if not os.path.exists(upload_dir):
-                return JsonResponse({'error': f"Upload directory not found: Start Recording First..!!"}, status=400)
+#         # Concatenate chunk files
+#         try:
+#             # Ensure the upload directory exists
+#             if not os.path.exists(upload_dir):
+#                 return JsonResponse({'error': f"Upload directory not found: Start Recording First..!!"}, status=status.HTTP_400_BAD_REQUEST)
             
-            chunk_files = sorted(
-                [os.path.join(upload_dir, f) for f in os.listdir(upload_dir) if f.startswith('chunk_') and f.endswith('.bin')]
-            )
-            if not chunk_files:
-                return Response({"error": "No chunk files found in the directory"}, status=400)
+#             chunk_files = sorted(
+#                 [os.path.join(upload_dir, f) for f in os.listdir(upload_dir) if f.startswith('chunk_') and f.endswith('.bin')]
+#             )
+#             if not chunk_files:
+#                 return Response({"error": "No chunk files found in the directory"}, status=status.HTTP_400_BAD_REQUEST)
 
 
-            # Combine chunks into one file
-            with open(concatenated_file, 'wb') as output_file:
-                for chunk_file in chunk_files:
-                    with open(chunk_file, 'rb') as f:
-                        output_file.write(f.read())
+#             # Combine chunks into one file
+#             with open(concatenated_file, 'wb') as output_file:
+#                 for chunk_file in chunk_files:
+#                     with open(chunk_file, 'rb') as f:
+#                         output_file.write(f.read())
 
-        except Exception as e:
-            return JsonResponse({'error': f"Failed to concatenate chunk files: {str(e)}"}, status=500)
+#         except Exception as e:
+#             return JsonResponse({'error': f"Failed to concatenate chunk files: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-        # Convert combined file to MP4
-        try:
-            cap = cv2.VideoCapture(concatenated_file)
+#         # Convert combined file to MP4
+#         try:
+#             cap = cv2.VideoCapture(concatenated_file)
 
-            # Ensure video can be opened
-            if not cap.isOpened():
-                return JsonResponse({'error': "Failed to open concatenated file"}, status=400)
+#             # Ensure video can be opened
+#             if not cap.isOpened():
+#                 return JsonResponse({'error': "Failed to open concatenated file"}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Get video properties
-            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS) or 20.0  # Fallback to 20 FPS if not set
+#             # Get video properties
+#             frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+#             frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+#             fps = cap.get(cv2.CAP_PROP_FPS) or 20.0  # Fallback to 20 FPS if not set
 
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
-            out = cv2.VideoWriter(mp4_file_path, fourcc, fps, (frame_width, frame_height))
+#             fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+#             out = cv2.VideoWriter(mp4_file_path, fourcc, fps, (frame_width, frame_height))
 
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                out.write(frame)
+#             while cap.isOpened():
+#                 ret, frame = cap.read()
+#                 if not ret:
+#                     break
+#                 out.write(frame)
 
-            cap.release()
-            out.release()
+#             cap.release()
+#             out.release()
 
-            # Optionally delete the original files and concatenated file
-            for chunk_file in chunk_files:
-                os.remove(chunk_file)
-            os.remove(concatenated_file)
+#             # Optionally delete the original files and concatenated file
+#             for chunk_file in chunk_files:
+#                 os.remove(chunk_file)
+#             os.remove(concatenated_file)
 
-            return JsonResponse({
-                'message': 'Recording finalized and converted to MP4',
-                'mp4_file_path': mp4_file_path
-            })
+#             description = process_video_for_description(mp4_file_path)
+#             update_incident_description(ticket_id, description)
 
-        except Exception as e:
-            return JsonResponse({'error': f"Failed to convert to MP4: {str(e)}"}, status=500)
+#             return JsonResponse({
+#                 'message': 'Recording finalized and converted to MP4',
+#                 'mp4_file_path': mp4_file_path
+#             })
 
-    return JsonResponse({'error': 'Invalid request method'}, status=405)
+#         except Exception as e:
+#             return JsonResponse({'error': f"Failed to convert to MP4: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#     return JsonResponse({'error': 'Invalid request method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 class MspViewSet(viewsets.ReadOnlyModelViewSet):  # Use ReadOnlyModelViewSet for GET requests
     queryset = IntegrationMSPConfig.objects.all()  # You can filter by user if necessary
@@ -1961,7 +1970,6 @@ class MspViewSet(viewsets.ReadOnlyModelViewSet):  # Use ReadOnlyModelViewSet for
         # Optionally filter by the current user
         return IntegrationMSPConfig.objects.filter(user=self.request.user.id)
     
-import pytesseract
 
 @api_view(['POST'])
 @csrf_exempt
@@ -1978,14 +1986,14 @@ def extract_text_from_video(request, token):
         video_file_path = os.path.join(upload_dir, 'recording_final.mp4')
 
         if not os.path.exists(video_file_path):
-            return Response({"error": f"Video file does not exist at {video_file_path}"}, status=400)
+            return Response({"error": f"Video file does not exist at {video_file_path}"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             print("Loading video for text extraction...")
             cap = cv2.VideoCapture(video_file_path)
 
             if not cap.isOpened():
-                return JsonResponse({'error': "Failed to open video file"}, status=400)
+                return JsonResponse({'error': "Failed to open video file"}, status=status.HTTP_400_BAD_REQUEST)
 
             frame_count = 0
             extracted_text = []
@@ -2012,125 +2020,477 @@ def extract_text_from_video(request, token):
 
         except Exception as e:
             print(f"Error during text extraction: {str(e)}")
-            return JsonResponse({'error': f"Failed to extract text from video: {str(e)}"}, status=500)
+            return JsonResponse({'error': f"Failed to extract text from video: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    return JsonResponse({'error': 'Invalid request method'}, status=405)
+    return JsonResponse({'error': 'Invalid request method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+import os
+import cv2
+import json
+import datetime
+import pytesseract
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.conf import settings
+from nltk.tokenize import sent_tokenize
 
 
 
-class GenerateWorkflowView(APIView):
 
-    def extract_frames(self, video_path, output_dir, interval=1):
-        """
-        Extract frames from a video at a given interval and save them as images.
-        """
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+# def filter_and_simplify_actions(text):
+#     """
+#     Filter and simplify actions from detected text.
+#     """
+#     # Keywords for action detection
+#     keywords = {
+#         "login": ["login", "sign in"],
+#         "search": ["search", "find", "query"],
+#         "navigate": ["navigate", "visit", "go to"],
+#         "form_submit": ["submit", "send", "post"],
+#         "upload": ["upload", "attach", "add"]
+#     }
 
-        cap = cv2.VideoCapture(video_path)
-        frame_rate = int(cap.get(cv2.CAP_PROP_FPS))  # Frames per second
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        duration = total_frames / frame_rate  # Video duration in seconds
+#     for action, words in keywords.items():
+#         for word in words:
+#             if word in text.lower():
+#                 # Return a simplified action based on the keyword
+#                 return f"User performed {action.replace('_', ' ')}"
 
-        frame_count = 0
-        extracted_frames = []
+#     # Return None for irrelevant text
+#     return None
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
 
-            # Extract a frame every 'interval' seconds
-            if frame_count % (frame_rate * interval) == 0:
-                timestamp = str(timedelta(seconds=int(frame_count / frame_rate)))
-                frame_path = os.path.join(output_dir, f"frame_{frame_count}.png")
-                cv2.imwrite(frame_path, frame)
-                extracted_frames.append({"frame_path": frame_path, "timestamp": timestamp})
-                # print(f"Saved frame at {timestamp}: {frame_path}")
 
-            frame_count += 1
 
-        cap.release()
-        print("Frame extraction complete.")
-        return extracted_frames
+# def generate_refined_workflow(video_path, output_dir, interval=5):
+#     """
+#     Generate a refined workflow from video frames, focusing on user actions.
+#     Remove duplicate actions while preserving the earliest occurrence.
+#     """
+#     # Extract frames
+#     extract_frames(video_path, output_dir, interval)
+#     workflow_steps = []
+#     frame_rate = get_video_frame_rate(video_path)
 
-    def detect_text_from_frame(self, frame_path):
-        """
-        Use OCR to detect text from a frame.
-        """
-        image = cv2.imread(frame_path)
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+#     seen_actions = set()  # Track unique actions to avoid duplicates
 
-        # Preprocessing for better OCR
-        _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+#     for frame_file in sorted(os.listdir(output_dir)):
+#         frame_path = os.path.join(output_dir, frame_file)
 
-        # OCR on preprocessed frame
-        text = pytesseract.image_to_string(thresh, lang="eng")
-        return text.strip()
+#         # Detect text from each frame
+#         text = detect_text(frame_path)
+#         if not text:
+#             continue
 
-    def infer_action_from_text(self, text):
-        """
-        Infer an action from the extracted text using simple NLP logic.
-        """
-        # Basic action inference (can be extended with NLP libraries like spaCy)
-        if "click" in text.lower():
-            return "Click"
-        elif "open" in text.lower():
-            return "Open"
-        elif "type" in text.lower():
-            return "Type"
-        elif "drag" in text.lower():
-            return "Drag"
-        else:
-            return "Unknown"
+#         # Simplify and categorize actions
+#         action = filter_and_simplify_actions(text)
+#         if action and action not in seen_actions:  # Only add new actions
+#             # Calculate timestamp from frame number
+#             frame_number = int(frame_file.split("_")[1].split(".")[0])
+#             timestamp = str(datetime.timedelta(seconds=frame_number / frame_rate))
 
-    def generate_workflow(self, video_path, ticket_id, interval=1):
-        """
-        Generate a workflow script from the recorded video.
-        """
-        # Create a directory path for extracted frames based on ticket_id
-        base_dir = os.path.dirname(video_path)  # Get the directory of the video
-        output_dir = os.path.join(base_dir, "extracted_frames")
+#             workflow_steps.append({
+#                 "frame": frame_file,
+#                 "action": action,
+#                 "timestamp": timestamp
+#             })
+#             seen_actions.add(action)  # Mark action as seen
 
-        # Extract frames
-        frames = self.extract_frames(video_path, output_dir, interval)
-        workflow_steps = []
+#     if not workflow_steps:
+#         return {"error": "No relevant actions detected"}
+    
+#     # Sort workflow steps by timestamp
+#     workflow_steps = sorted(workflow_steps, key=lambda x: datetime.timedelta(seconds=_parse_timestamp(x["timestamp"])))
 
-        for frame_data in frames:
-            frame_path = frame_data["frame_path"]
-            timestamp = frame_data["timestamp"]
+#     return {"steps": workflow_steps}
 
-            # Detect text from each frame
-            text = self.detect_text_from_frame(frame_path)
-            if text:
-                # Infer action from text
-                action = self.infer_action_from_text(text)
-                workflow_steps.append({
-                    "timestamp": timestamp,
-                    "frame": os.path.basename(frame_path),
-                    "action": action,
-                    "details": text
-                })
+# def _parse_timestamp(timestamp_str):
+#     """
+#     Helper function to parse a timestamp string into total seconds.
+#     """
+#     h, m, s = map(float, timestamp_str.split(":"))
+#     return h * 3600 + m * 60 + s
 
-        # Save workflow as JSON
-        workflow_script = {"workflow": workflow_steps}
-        workflow_json_path = os.path.join(output_dir, "workflow.json")
-        with open(workflow_json_path, "w") as f:
-            json.dump(workflow_script, f, indent=4)
-        print(f"Workflow saved to {workflow_json_path}")
+# def process_video_for_description(video_path):
+#     """
+#     Extracts a summarized description of actions performed in the video.
+#     """
+#     cap = cv2.VideoCapture(video_path)
+#     frame_count = 0
+#     fps = int(cap.get(cv2.CAP_PROP_FPS))
+#     descriptions = []
 
-        return workflow_script
+#     while cap.isOpened():
+#         ret, frame = cap.read()
+#         if not ret:
+#             break
 
-    def post(self, request, *args, **kwargs):
+#         # Extract every nth frame (e.g., 1 frame every second)
+#         if frame_count % (fps * 1) == 0:
+#             text = pytesseract.image_to_string(frame, lang="eng").strip()
+#             if text:
+#                 descriptions.append(text)
+
+#         frame_count += 1
+
+#     cap.release()
+
+#     # Summarize descriptions into coherent text
+#     summary = summarize_descriptions(descriptions)
+#     return summary
+
+# def summarize_descriptions(descriptions):
+#     """
+#     Summarizes extracted descriptions into a coherent text.
+#     """
+#     unique_descriptions = list(set(descriptions))  # Remove duplicates
+#     summary = " ".join(sent_tokenize(" ".join(unique_descriptions)))  # Combine sentences
+#     return summary
+
+# def update_incident_description(incident_id, description):
+#     """
+#     Updates the description column in the Incident table.
+#     """
+#     try:
+#         incident = Incident.objects.get(id=incident_id)
+#         incident.description = description
+#         incident.save()
+#         print(f"Incident {incident_id} description updated successfully.")
+#     except Incident.DoesNotExist:
+#         print(f"Incident {incident_id} not found.")
+
+# class GenerateWorkflowView(APIView):
+#     """
+#     API View to process a video and generate a workflow with timestamps.
+#     """
+
+#     def post(self, request, *args, **kwargs):
+#         ticket_id = request.data.get("ticket_id")
+#         video_path = os.path.join(settings.BASE_DIR, "logos", "recordings", str(ticket_id), "recording_final.mp4")
+#         output_dir = os.path.join(settings.BASE_DIR, "logos", "recordings", str(ticket_id), "frames")
+#         output_file = os.path.join(settings.BASE_DIR, "logos", "recordings", str(ticket_id), "refined_workflow.json")
+
+#         if not os.path.exists(video_path):
+#             return Response({"error": "Video not found"}, status=status.HTTP_404_NOT_FOUND)
+
+#         try:
+#             # Generate refined workflow
+#             workflow = generate_refined_workflow(video_path, output_dir)
+
+#             # Save workflow to JSON file
+#             with open(output_file, "w") as json_file:
+#                 json.dump(workflow, json_file, indent=4)
+
+#             return Response(workflow, status=status.HTTP_200_OK)
+
+#         except Exception as e:
+#             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+@api_view(['POST'])
+@csrf_exempt
+def finalize_recording(request, token):
+    user = token_verification(token)
+    if user['status'] != 200:
+        return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == 'POST':
         ticket_id = request.data.get('ticket_id')
-        video_path = os.path.join(settings.BASE_DIR,"logos", "recordings", str(ticket_id), "recording_final.mp4")
+        upload_dir = os.path.join(settings.BASE_DIR, 'logos', 'recordings', str(ticket_id))
+        concatenated_file = os.path.join(upload_dir, 'concatenated_recording.bin')
+        mp4_file_path = os.path.join(upload_dir, 'recording_final.mp4')
 
-        if not os.path.exists(video_path):
-            return Response({"error": "Video not found"}, status=status.HTTP_404_NOT_FOUND)
+        # Check if the upload directory exists
+        if not os.path.exists(upload_dir):
+            return JsonResponse({'error': "Upload directory not found: Start Recording First..!!"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Gather chunk files and concatenate them
+        chunk_files = sorted(
+            [os.path.join(upload_dir, f) for f in os.listdir(upload_dir) if f.startswith('chunk_') and f.endswith('.bin')]
+        )
+        if not chunk_files:
+            return Response({"error": "No chunk files found in the directory"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            workflow = self.generate_workflow(video_path, ticket_id, interval=2)  # Extract frames every 2 seconds
-            return Response(workflow, status=status.HTTP_200_OK)
+            with open(concatenated_file, 'wb') as output_file:
+                for chunk_file in chunk_files:
+                    with open(chunk_file, 'rb') as f:
+                        output_file.write(f.read())
+        except Exception as e:
+            return JsonResponse({'error': f"Failed to concatenate chunk files: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Convert the concatenated binary to an MP4 file
+        try:
+            cap = cv2.VideoCapture(concatenated_file)
+
+            if not cap.isOpened():
+                return JsonResponse({'error': "Failed to open concatenated file"}, status=status.HTTP_400_BAD_REQUEST)
+
+            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS) or 20.0
+
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(mp4_file_path, fourcc, fps, (frame_width, frame_height))
+
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                out.write(frame)
+
+            cap.release()
+            out.release()
+
+            # Delete original chunk files
+            for chunk_file in chunk_files:
+                os.remove(chunk_file)
+            os.remove(concatenated_file)
+
+            # Generate workflow from video frames
+            workflow = generate_refined_workflow(mp4_file_path, os.path.join(upload_dir, "frames"))
+
+            if 'steps' not in workflow or not workflow['steps']:
+                return JsonResponse({'error': "No relevant actions detected in video"}, status=status.HTTP_400_BAD_REQUEST)
+
+            description, predicted_agents = summarize_workflow_steps(workflow)
+
+            confidence_threshold = request.data.get('confidence_threshold', 75)  # Default to 75%
+            confidence_threshold = float(confidence_threshold)
+
+            # Determine assignment based on confidence
+            assigned_agent = determine_agent_assignment(predicted_agents, confidence_threshold)
+
+            # If resolved, categorize under a specific agent
+            if assigned_agent == 'human' and request.data.get('resolved_agent'):
+                resolved_agent = request.data['resolved_agent']
+                predicted_agents[resolved_agent] = "100.00%"
+                assigned_agent = resolved_agent
+
+            # Update incident details
+            incident = Incident.objects.get(id=ticket_id)
+            incident.description = description
+            incident.pagent = assigned_agent
+            incident.save()
+
+            return JsonResponse({
+                'message': 'Recording finalized and converted to MP4',
+                'mp4_file_path': mp4_file_path,
+                'workflow': workflow,
+                'description': description,
+                'predicted_agents': predicted_agents,
+                'assigned_agent': assigned_agent
+            })
 
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return JsonResponse({'error': f"Failed to convert to MP4: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return JsonResponse({'error': 'Invalid request method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+def get_video_frame_rate(video_path):
+    """
+    Retrieve the frame rate of a video.
+    """
+    cap = cv2.VideoCapture(video_path)
+    frame_rate = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
+    return frame_rate
+
+def extract_frames(video_path, output_dir, interval=5):
+    """
+    Extract frames from a video at specified intervals.
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    cap = cv2.VideoCapture(video_path)
+    frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+    frame_count = 0
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Extract frames based on interval
+        if frame_count % (frame_rate * interval) == 0:
+            frame_path = os.path.join(output_dir, f"frame_{frame_count}.png")
+            cv2.imwrite(frame_path, frame)
+
+        frame_count += 1
+
+    cap.release()
+
+
+def detect_text(frame_path):
+    """
+    Detect text from an image frame using OCR.
+    """
+    image = cv2.imread(frame_path)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+
+    # Perform OCR on the preprocessed image
+    text = pytesseract.image_to_string(thresh, lang="eng")
+    return text.strip()
+
+
+def determine_agent_assignment(predicted_agents, threshold):
+    """
+    Determine which agent to assign the incident to based on confidence levels.
+    """
+    top_agent = None
+    max_confidence = 0
+
+    for agent, confidence_str in predicted_agents.items():
+        confidence = float(confidence_str.replace('%', ''))
+        if confidence > max_confidence:
+            max_confidence = confidence
+            top_agent = agent
+
+    if max_confidence >= threshold:
+        return top_agent  # Assign to the predicted agent
+    return "human"  # Assign to human if confidence is below the threshold
+
+
+def filter_and_simplify_actions(text):
+    """
+    Filter and simplify actions from detected text and predict the agent type with confidence scores.
+    """
+    agent_keywords = {
+        "network": [
+            "network", "connectivity", "ping", "router", "firewall",
+            "latency", "bandwidth", "IP", "DNS", "VPN", "gateway"
+        ],
+        "security": [
+            "security", "threat", "antivirus", "attack", "breach",
+            "malware", "ransomware", "encryption", "firewall", "auth",
+            "policy", "credentials", "multi-factor authentication", "cyberattack"
+        ],
+        "hardware": [
+            "hardware", "printer", "laptop", "device", "keyboard",
+            "mouse", "monitor", "CPU", "server", "hard drive", "RAM"
+        ],
+        "software": [
+            "software", "application", "install", "error", "bug",
+            "update", "patch", "program", "system", "setup", "reinstall", "driver"
+        ],
+        "human": [
+            "login", "search", "manual", "user", "upload",
+            "navigate", "enter", "input", "fill", "type", "click", "read", "access"
+        ],
+    }
+
+    action_keywords = {
+        "login": ["login", "sign in", "sign-in", "authenticate"],
+        "search": ["search", "find", "query", "lookup", "browse"],
+        "upload": ["upload", "attach", "add file", "insert", "send"],
+        "configure": ["configure", "setup", "install", "initialize", "apply"],
+        "navigate": ["navigate", "visit", "go to", "access"],
+        "download": ["download", "save", "export"],
+        "reset": ["reset", "reboot", "restart"],
+        "patch": ["patch", "update", "fix"],
+        "monitor": ["monitor", "check", "track"],
+        "resolve": ["resolve", "troubleshoot", "fix", "repair"],
+    }
+
+    confidence_scores = {}
+
+    # Calculate confidence scores based on keyword matches
+    for agent, keywords in agent_keywords.items():
+        score = sum(1 for word in keywords if word in text.lower())
+        if score > 0:
+            confidence_scores[agent] = score
+
+    # Normalize confidence scores to percentages
+    total_score = sum(confidence_scores.values())
+    if total_score > 0:
+        confidence_scores = {agent: (score / total_score) * 100 for agent, score in confidence_scores.items()}
+
+    # Filter out agents with low confidence (e.g., < 10%)
+    confidence_scores = {agent: score for agent, score in confidence_scores.items() if score >= 10}
+
+    # Sort agents by confidence score in descending order
+    sorted_agents = sorted(confidence_scores.items(), key=lambda x: x[1], reverse=True)
+
+    # Detect actions based on keywords
+    detected_action = None
+    for action, keywords in action_keywords.items():
+        for word in keywords:
+            if word in text.lower():
+                detected_action = f"User performed {action}"
+                break
+        if detected_action:
+            break
+
+    if not detected_action:
+        detected_action = "User performed an unknown task"
+
+    if sorted_agents:
+        top_agent, confidence = sorted_agents[0]
+        return detected_action, top_agent, confidence, confidence_scores
+    else:
+        return detected_action, "unknown", 0, {}
+
+
+def generate_refined_workflow(video_path, output_dir, interval=5):
+    """
+    Generate a refined workflow from video frames, focusing on user actions.
+    """
+    extract_frames(video_path, output_dir, interval)
+    workflow_steps = []
+    frame_rate = get_video_frame_rate(video_path)
+
+    for frame_file in sorted(os.listdir(output_dir)):
+        frame_path = os.path.join(output_dir, frame_file)
+        text = detect_text(frame_path)
+
+        if text:  # Only process if text is detected
+            action, agent_type, confidence, confidence_scores = filter_and_simplify_actions(text)
+            if action:
+                frame_number = int(frame_file.split("_")[1].split(".")[0])
+                timestamp = str(datetime.timedelta(seconds=frame_number / frame_rate))
+
+                workflow_steps.append({
+                    "frame": frame_file,
+                    "action": action,
+                    "agent": agent_type,
+                    "confidence": f"{confidence:.2f}%",
+                    "timestamp": timestamp
+                })
+
+    if not workflow_steps:
+        return {"error": "No relevant actions detected"}
+
+    return {"steps": workflow_steps}
+
+
+def summarize_workflow_steps(workflow):
+    """
+    Summarize workflow steps into a coherent description and predict agents with confidence scores.
+    """
+    ordered_actions = []
+    agent_confidences = {}
+
+    for step in workflow['steps']:
+        action = step['action']
+        agent = step.get('agent', 'unknown')
+        confidence = float(step.get('confidence', "0").strip('%'))
+
+        # Add action to description if unique
+        if action not in ordered_actions:
+            ordered_actions.append(action)
+
+        # Aggregate confidence for each agent
+        if agent != 'unknown':
+            agent_confidences[agent] = agent_confidences.get(agent, 0) + confidence
+
+    # Normalize aggregated confidence scores
+    total_confidence = sum(agent_confidences.values())
+    if total_confidence > 0:
+        agent_confidences = {agent: f"{score / total_confidence * 100:.2f}%" for agent, score in agent_confidences.items()}
+
+    # Prepare description
+    description = ". ".join(ordered_actions).capitalize() + "."
+
+    return description, agent_confidences
