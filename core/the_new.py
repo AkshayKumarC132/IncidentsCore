@@ -983,34 +983,53 @@ class IncidentManagementAPI(APIView):
         serializer = IncidentSerializerr(incident)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    def get(self, request, incident_id=None,token=''):
+    def get(self, request, incident_id=None, token=''):
+        # Verify the token
         user = token_verification(token)
-        if user['status'] ==200:
-            user_profile = user['user'] 
+        if user['status'] == 200:
+            user_profile = user['user']
         else:
-            return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-        # Allow only admins and team members to view incidents
+            return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ensure the user has permission to view incidents
         if user_profile.role not in ['admin', 'msp_superuser', 'msp_user']:
             return Response(
                 {"error": "You do not have permission to view incidents."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Fetch all incidents associated with devices managed by the user's MSP
-        if incident_id is None:
-            incidents = Incident.objects.filter(
-                device__client__msp__user=user_profile
-            )
-            serializer = IncidentSerializer(incidents, many=True)
-            return Response(serializer.data)
+        # Fetch all incidents for the user's MSP
+        incidents = Incident.objects.filter(
+            device__client__msp__user=user_profile
+        )
 
-        # Fetch a specific incident
-        else:
+        # Handle filtering and sorting
+        pagent = request.query_params.get('pagent')
+        sort_by = request.query_params.get('sort_by', 'created_at')
+        order = request.query_params.get('order', 'desc')
+
+        # Apply filtering
+        if pagent:
+            incidents = incidents.filter(pagent__icontains=pagent)
+
+        # Apply sorting
+        if order == 'desc':
+            sort_by = f"-{sort_by}"
+        incidents = incidents.order_by(sort_by)
+ 
+        # Handle specific incident retrieval or list all
+        if incident_id is not None:
+            # Fetch a specific incident
             incident = get_object_or_404(
-                Incident, id=incident_id, device__client__msp__user=user_profile
+                incidents, id=incident_id
             )
             serializer = IncidentSerializer(incident)
             return Response(serializer.data)
+
+        # Serialize and return the filtered and sorted list
+        serializer = IncidentSerializer(incidents, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
     def put(self, request, incident_id,token):
         user = token_verification(token)
@@ -2494,3 +2513,81 @@ def summarize_workflow_steps(workflow):
     description = ". ".join(ordered_actions).capitalize() + "."
 
     return description, agent_confidences
+
+
+class PostResolutionClassification(APIView):
+    def post(self, request, incident_id):
+        """
+        Handle the post-resolution classification for an incident.
+        """
+        # Your logic here, similar to the function-based view
+        try:
+            # Fetch the incident by ID
+            incident = Incident.objects.get(id=incident_id)
+
+            # Ensure the incident was assigned to human initially
+            if incident.pagent != "human":
+                return Response(
+                    {'error': 'This incident was not assigned to a human agent'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Extract data from the request
+            classification = request.data.get('classification', '').strip().lower()
+            description = request.data.get('description', '').strip()
+
+            # Validate classification
+            valid_classifications = ['software', 'network', 'hardware', 'security', 'human']
+            if classification not in valid_classifications:
+                return Response(
+                    {'error': f'Invalid classification. Valid options are: {", ".join(valid_classifications)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Update the incident record
+            incident.pagent = classification
+            if description:
+                incident.description = f"{incident.description}\n\nPost-resolution Update: {description}"
+            incident.save()
+
+            # Log the update for retraining
+            retraining_log = {
+                "incident_id": incident.id,
+                "classification": classification,
+                "description": description,
+            }
+            log_retraining_data(retraining_log)
+
+            return Response(
+                {'message': 'Post-resolution classification updated successfully'},
+                status=status.HTTP_200_OK
+            )
+
+        except Incident.DoesNotExist:
+            return Response({'error': 'Incident not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+def log_retraining_data(data):
+    """
+    Log retraining data for future ML model improvements.
+    """
+    retraining_log_path = os.path.join(settings.BASE_DIR, 'retraining_data.json')
+
+    # Append new data to the log file
+    try:
+        if not os.path.exists(retraining_log_path):
+            with open(retraining_log_path, 'w') as f:
+                json.dump([], f)
+
+        with open(retraining_log_path, 'r+') as f:
+            logs = json.load(f)
+            logs.append(data)
+            f.seek(0)
+            json.dump(logs, f, indent=4)
+
+        print("Retraining data logged successfully.")
+    except Exception as e:
+        print(f"Error logging retraining data: {str(e)}")

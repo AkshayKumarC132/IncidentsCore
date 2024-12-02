@@ -127,6 +127,8 @@ urlpatterns = [
     ##########
     path('upload_recording_chunk/<str:token>', upload_recording_chunk, name='upload_recording_chunk'),
     path('finalize_recording/<str:token>', finalize_recording, name='finalize_recording'),
+
+    path('incident/<int:incident_id>/post-resolution',PostResolutionClassification.as_view(), name ='human agent post resolution'),
 #     path('generate_workflow/', GenerateWorkflowView.as_view(), name='generate_workflow'),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

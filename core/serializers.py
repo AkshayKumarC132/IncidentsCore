@@ -155,7 +155,7 @@ class IncidentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Incident
         fields = ['id', 'title', 'description', 'device', 'severity', 'resolved',
-                  'recommended_solution', 'predicted_resolution_time', 'created_at']
+                  'recommended_solution', 'predicted_resolution_time', 'created_at','pagent']
 
 # Agent Serializer
 
