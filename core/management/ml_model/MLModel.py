@@ -32,12 +32,21 @@ class IncidentMLModel():
         data['created_dayofweek'] = data['created_at'].dt.dayofweek
         data['created_month'] = data['created_at'].dt.month
 
+        # # Drop rows with missing values
+        # data = data.dropna()
         # Drop rows with missing values
-        data = data.dropna()
+        data = data.dropna(subset=['severity_id', 'device_id', 'predicted_resolution_time'])
+        if data.empty:
+            print("No valid data after dropping NaN values.")
+            return
 
         # Prepare data for time prediction
         features_time = data[['severity_id', 'device_id', 'created_hour', 'created_dayofweek', 'created_month']]
         target_time = data['predicted_resolution_time']
+
+        if len(features_time) < 2:  # Ensure sufficient data for train-test split
+            print("Not enough data for train-test split.")
+            return
 
         # Train-test split for time prediction
         X_train_time, X_test_time, y_train_time, y_test_time = train_test_split(
@@ -157,6 +166,7 @@ class IncidentMLModel():
             return 1.0  # Default value if prediction fails
 
     def predict_solution(self, incident_data):
+        print(incident_data)
         
         if not self.vectorizer:
             print("Vectorizer is not loaded. Please train the model first.")

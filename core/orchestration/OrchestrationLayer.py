@@ -67,11 +67,10 @@ class OrchestrationLayer():
             
     def get_unresolved_incidents(self):
         """Fetch unresolved incidents from the database."""
-        return Incident.objects.filter(resolved=False).select_related('severity')
+        return Incident.objects.filter(resolved=False,id__gt=500).select_related('severity')
 
     def map_incident_to_agent(self, incident):
         try:
-            print("This is Incident Data=========", incident)
             """Map an incident to the appropriate agent based on prediction or keywords."""
             # Prepare data for the ML model
             incident_data = {
@@ -91,25 +90,29 @@ class OrchestrationLayer():
             incident.save()
 
             # Determine agent type
-            if ("network" in incident.title.lower() or 
-                "network" in incident.description.lower() or 
-                "network" in incident.recommended_solution.lower() or
-                "network" in incident.pagent.lower()):
+            if ("network" in self.safe_lower(incident.title) or 
+                "network" in self.safe_lower(incident.description) or 
+                "network" in self.safe_lower(incident.recommended_solution) or
+                "network" in self.safe_lower(incident.pagent)):
                 return 'network'
-            elif ("security" in incident.title.lower() or 
-                  "security" in incident.description.lower() or 
-                  "security" in incident.recommended_solution.lower() or
-                  "security" in incident.pagent.lower()):
+            elif ("security" in self.safe_lower(incident.title) or 
+                "security" in self.safe_lower(incident.description) or 
+                "security" in self.safe_lower(incident.recommended_solution) or
+                "security" in self.safe_lower(incident.pagent)):
                 return 'security'
-            elif ("hardware" in incident.title.lower() or 
-                  "hardware" in incident.description.lower() or 
-                  "hardware" in incident.recommended_solution.lower() or
-                  "hardware" in incident.pagent.lower()):
+            elif ("hardware" in self.safe_lower(incident.title) or 
+                "hardware" in self.safe_lower(incident.description) or 
+                "hardware" in self.safe_lower(incident.recommended_solution) or
+                "hardware" in self.safe_lower(incident.pagent)):
                 return 'hardware'
             else:
                 return 'software'
         except Exception as e:
+            print(str(e))
             return str(e)
+        
+    def safe_lower(self,value):
+        return value.lower() if value else ""
 
     def dispatch_incident(self, incident):
         try:
@@ -125,6 +128,10 @@ class OrchestrationLayer():
                     incident.assigned_agent = assigned_agent
                     incident.assigned_at = timezone.now()
                     incident.save()
+            else:
+                incident.assigned_agent = assigned_agent
+                incident.assigned_at = timezone.now()
+                incident.save()
 
             # Log the assignment
             log_entry = IncidentLog.objects.create(
