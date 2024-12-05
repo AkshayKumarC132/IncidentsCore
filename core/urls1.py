@@ -20,6 +20,7 @@ from .views import (
 from incidentmanagement import settings
 from django.conf.urls.static import static
 # from . import human_tickets, recording
+from .gl_view import *
 
 router = DefaultRouter()
 # router.register(r'customers', ClientViewSet)
@@ -130,5 +131,7 @@ urlpatterns = [
 
     path('incident/<int:incident_id>/post-resolution',PostResolutionClassification.as_view(), name ='human agent post resolution'),
 #     path('generate_workflow/', GenerateWorkflowView.as_view(), name='generate_workflow'),
+     path('gl-dashboard/<str:token>', GLDashboardView.as_view(), name='gl-dashboard'),
+     path('update-role/<str:token>', UpdateUserRoleAPIView.as_view(), name='update user role')
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

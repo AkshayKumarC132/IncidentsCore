@@ -22,6 +22,7 @@ class UserProfile(AbstractUser):
         ('admin', 'Admin'),
         ('msp_superuser', 'MSP SuperUser'),
         ('msp_user', 'MSP User'),
+        ('gl', 'GL'),  # Replace God-Like with GL
     ]
     role = models.CharField(
         max_length=20, choices=ROLE_CHOICES, default='msp_user')
@@ -40,6 +41,11 @@ class UserProfile(AbstractUser):
     menu_position = models.CharField(
         max_length=10, choices=[('top', 'Top'), ('left', 'Left')], default='top')
     logo_url = models.ImageField(upload_to='logos/', null=True, blank=True)
+    font_style = models.CharField(max_length=50, default="Arial")  # Font family
+    font_size = models.IntegerField(default=14)  # Font size in pixels
+    font_color = models.CharField(max_length=7, default="#000000")  # Hex color for font
+    logo_shape = models.CharField(max_length=50, default="rectangle")
+    logo_position = models.CharField(max_length=50, default="top-left")
 
     class Meta:
         db_table = "user_profile"

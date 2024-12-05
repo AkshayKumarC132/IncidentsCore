@@ -66,7 +66,7 @@ def register(request):
     role = request.data.get('role', 'msp_user')
 
     # Validate if role is one of the allowed choices
-    allowed_roles = ['admin', 'msp_superuser', 'msp_user']
+    allowed_roles = ['admin', 'msp_superuser', 'msp_user','gl']
     if role not in allowed_roles:
         return Response(
             {"error": f"Invalid role. Allowed roles are: {', '.join(allowed_roles)}"},
@@ -325,6 +325,11 @@ def update_preferences(request,token):
         'shadow_color', user_profile.shadow_color)
     user_profile.menu_position = data.get(
         'menu_position', user_profile.menu_position)
+    user_profile.font_style = data.get('font_style', user_profile.font_style)
+    user_profile.font_size = data.get('font_size', user_profile.font_size)
+    user_profile.font_color = data.get('font_color', user_profile.font_color)
+    user_profile.logo_shape = data.get('logo_shape', user_profile.logo_shape)
+    user_profile.logo_position = data.get('logo_position', user_profile.logo_position)
 
     # Handle logo upload
     if 'logo_url' in request.FILES:
@@ -1874,7 +1879,7 @@ def start_recording(request,token):
         return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
     ticket_id = request.data.get('ticket_id')
 
-    # ScreenRecording.objects.create(is_recording = True, incident = ticket_id)
+    ScreenRecording.objects.create(is_recording = True, incident = ticket_id)
     # Logic to initialize recording session
     return Response({"status": "Recording started", "ticket_id": ticket_id})
 

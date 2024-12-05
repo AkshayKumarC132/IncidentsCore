@@ -42,3 +42,4 @@ mss
 pytesseract
 nltk
 django-rest-knox
+jira

@@ -45,7 +45,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['id', 'username', 'email', 'name', 'role', 'is_active', 'created_at', 'theme',
-                  'notifications', 'layout', 'background_color', 'shadow_color', 'menu_position', 'logo_url']
+                  'notifications', 'layout', 'background_color', 'shadow_color', 'menu_position', 'logo_url',
+                  'font_style','font_size','font_color','logo_position','logo_shape']
 
 
 class TeamSerializer(serializers.ModelSerializer):
