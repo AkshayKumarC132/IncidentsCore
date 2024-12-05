@@ -197,7 +197,7 @@ def dashboard_data_(request,token):
     data['role'] = user.role
 
     # Get the user's associated devices and clients based on their role
-    if user.role == 'admin':
+    if user.role == 'admin' or user.role == 'gl':
         # Admin sees all incidents
         user_devices = Device.objects.all()
         user_clients = Client.objects.all()
@@ -334,6 +334,7 @@ def update_preferences(request,token):
     # Handle logo upload
     if 'logo_url' in request.FILES:
         logo_file = request.FILES['logo_url']
+        print(logo_file)
         path = default_storage.save(
             f'logos/{logo_file.name}', ContentFile(logo_file.read()))
         user_profile.logo_url = path
@@ -582,13 +583,30 @@ def get_incident_log_details(request,token):
         user = user['user']
     else:
         return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-    # user = request.user
-    user_msp_configs = IntegrationMSPConfig.objects.filter(user=user)
+    # # user = request.user
+    # user_msp_configs = IntegrationMSPConfig.objects.filter(user=user)
 
-    # Retrieve logs for incidents associated with the user's MSP configurations
-    logs = IncidentLog.objects.filter(
-        incident__device__client__msp__in=user_msp_configs
-    ).select_related('incident')
+    # # Retrieve logs for incidents associated with the user's MSP configurations
+    # logs = IncidentLog.objects.filter(
+    #     incident__device__client__msp__in=user_msp_configs
+    # ).select_related('incident')
+    # Check if the user has the GL (Global Leader) role
+    # is_gl = user.role.filter(name='GL').exists()  # Assuming roles are related to user and role name is 'GL'
+    if user.role == 'gl' or user.role =='admin':
+        is_gl = True
+    else:
+        is_gl = False
+        
+    # If the user is GL, fetch all incident logs
+    if is_gl:
+        logs = IncidentLog.objects.all().select_related('incident')
+        user_msp_configs = None  # GL doesn't need MSP configuration filtering
+    else:
+        # If the user is not GL, proceed with filtering by MSP config
+        user_msp_configs = IntegrationMSPConfig.objects.filter(user=user)
+        logs = IncidentLog.objects.filter(
+            incident__device__client__msp__in=user_msp_configs
+        ).select_related('incident')
     
     # Prepare log data
     log_data = [{
@@ -682,7 +700,7 @@ class ClientManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Ensure only admins and superusers can create clients
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to create clients."},
                 status=status.HTTP_403_FORBIDDEN
@@ -733,23 +751,35 @@ class ClientManagementAPI(APIView):
             user_profile = user['user'] 
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to view clients."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if client_id is None:
-            # Fetch all clients linked to the user's MSP
-            clients = Client.objects.filter(msp__user=user_profile)
-            serializer = ClientSerializerr(clients, many=True)
-            return Response(serializer.data)
+        if user_profile.role == 'gl':
+            if client_id is None:
+                # Fetch all clients without filtering by MSP
+                clients = Client.objects.all()
+                serializer = ClientSerializerr(clients, many=True)
+                return Response(serializer.data)
+            else:
+                # Fetch a specific client
+                client = get_object_or_404(Client, id=client_id)
+                serializer = ClientSerializerr(client)
+                return Response(serializer.data)
         else:
-            # Fetch a specific client
-            client = get_object_or_404(
-                Client, id=client_id, msp__user=user_profile)
-            serializer = ClientSerializerr(client)
-            return Response(serializer.data)
+            if client_id is None:
+                # Fetch clients linked to the user's MSP
+                clients = Client.objects.filter(msp__user=user_profile)
+                serializer = ClientSerializerr(clients, many=True)
+                return Response(serializer.data)
+            else:
+                # Fetch a specific client linked to the user's MSP
+                client = get_object_or_404(Client, id=client_id, msp__user=user_profile)
+                serializer = ClientSerializerr(client)
+                return Response(serializer.data)
+
 
     def put(self, request, client_id,token):
         # Ensure only admins and superusers can update clients
@@ -758,7 +788,7 @@ class ClientManagementAPI(APIView):
             user_profile = user['user'] 
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to update clients."},
                 status=status.HTTP_403_FORBIDDEN
@@ -790,7 +820,7 @@ class ClientManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Ensure only admins and superusers can delete clients
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to delete clients."},
                 status=status.HTTP_403_FORBIDDEN
@@ -829,7 +859,7 @@ class DeviceManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Ensure only admins and superusers can create devices
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to create devices."},
                 status=status.HTTP_403_FORBIDDEN
@@ -867,23 +897,34 @@ class DeviceManagementAPI(APIView):
             user_profile = user['user'] 
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to view devices."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if device_id is None:
-            # Fetch all devices associated with the client's MSP
-            devices = Device.objects.filter(client__msp__user=user_profile)
-            serializer = DeviceSerializer(devices, many=True)
-            return Response(serializer.data)
+        # If role is 'gl', fetch all devices
+        if user_profile.role == 'gl':
+            if device_id is None:
+                # Fetch all devices
+                devices = Device.objects.all()
+                serializer = DeviceSerializer(devices, many=True)
+                return Response(serializer.data)
+            else:
+                # Fetch a specific device
+                device = get_object_or_404(Device, id=device_id)
+                serializer = DeviceSerializer(device)
+                return Response(serializer.data)
         else:
-            # Fetch a specific device
-            device = get_object_or_404(
-                Device, id=device_id, client__msp__user=user_profile)
-            serializer = DeviceSerializer(device)
-            return Response(serializer.data)
+            # Fetch devices associated with the user's MSP
+            if device_id is None:
+                devices = Device.objects.filter(client__msp__user=user_profile)
+                serializer = DeviceSerializer(devices, many=True)
+                return Response(serializer.data)
+            else:
+                device = get_object_or_404(Device, id=device_id, client__msp__user=user_profile)
+                serializer = DeviceSerializer(device)
+                return Response(serializer.data)
 
     def put(self, request, device_id,token):
         user = token_verification(token)
@@ -892,7 +933,7 @@ class DeviceManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Ensure only admins and superusers can update devices
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to update devices."},
                 status=status.HTTP_403_FORBIDDEN
@@ -924,7 +965,7 @@ class DeviceManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Ensure only admins and superusers can delete devices
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to delete devices."},
                 status=status.HTTP_403_FORBIDDEN
@@ -997,16 +1038,20 @@ class IncidentManagementAPI(APIView):
             return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
 
         # Ensure the user has permission to view incidents
-        if user_profile.role not in ['admin', 'msp_superuser', 'msp_user']:
+        if user_profile.role not in ['admin', 'msp_superuser', 'msp_user', 'gl']:
             return Response(
                 {"error": "You do not have permission to view incidents."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Fetch all incidents for the user's MSP
-        incidents = Incident.objects.filter(
-            device__client__msp__user=user_profile
-        )
+        # If the user role is 'gl', fetch all incidents
+        if user_profile.role == 'gl':
+            incidents = Incident.objects.all()
+        else:
+            # Fetch all incidents for the user's MSP
+            incidents = Incident.objects.filter(
+                device__client__msp__user=user_profile
+            )
 
         # Handle filtering and sorting
         pagent = request.query_params.get('pagent')
@@ -1106,7 +1151,7 @@ class TeamManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Ensure only admins and superusers can create teams
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to create teams."},
                 status=status.HTTP_403_FORBIDDEN
@@ -1147,7 +1192,7 @@ class TeamManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Allow only MSP admins and superusers to view teams
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to view teams."},
                 status=status.HTTP_403_FORBIDDEN
@@ -1171,7 +1216,7 @@ class TeamManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Ensure only admins and superusers can modify teams
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to update teams."},
                 status=status.HTTP_403_FORBIDDEN
@@ -1204,7 +1249,7 @@ class TeamManagementAPI(APIView):
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
         # Ensure only admins and superusers can delete teams
-        if user_profile.role not in ['admin', 'msp_superuser']:
+        if user_profile.role not in ['admin', 'msp_superuser','gl']:
             return Response(
                 {"error": "You do not have permission to delete teams."},
                 status=status.HTTP_403_FORBIDDEN
@@ -1812,20 +1857,28 @@ class IncidentsByStatus(APIView):
         else:
             incidents = Incident.objects.filter(resolved=True)
 
-        # If user is an MSP Superuser or User, restrict the data to their clients
-        if user.role == 'msp_superuser' or user.role == 'msp_user':
-            # msp_config = IntegrationMSPConfig.objects.filter(user=request.user)
-            msp_config = user.integrationmspconfig_set.first()
-            if msp_config:
-                clients = Client.objects.filter(msp=msp_config)
+        # Role-specific filtering
+        if user.role in ['msp_superuser', 'msp_user']:
+            # Restrict incidents to MSP clients associated with the user
+            msp_configs = user.integrationmspconfig_set.all()
+            if msp_configs.exists():
+                clients = Client.objects.filter(msp__in=msp_configs)
                 incidents = incidents.filter(device__client__in=clients)
+            else:
+                incidents = incidents.none()
+        elif user.role != 'gl':
+            # Non-'gl' and non-MSP roles cannot access incidents
+            return Response({"error": "You do not have permission to view incidents."},
+                            status=status.HTTP_403_FORBIDDEN)
 
         # Prepare the response data
-        incident_data = list(incidents.select_related('device', 'severity').values(
-            'title', 'device__name', 'severity__level', 'resolved'
-        ))
+        incident_data = list(
+            incidents.select_related('device', 'severity').values(
+                'title', 'device__name', 'severity__level', 'resolved'
+            )
+        )
 
-        return Response(incident_data)
+        return Response(incident_data, status=status.HTTP_200_OK)
 
 
 
@@ -1839,11 +1892,20 @@ class IncidentsByDevice(APIView):
             user_profile = user['user'] 
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-        user_devices = Device.objects.filter(client__msp__user=user_profile)
+        # Handle data access based on the user's role
+        if user_profile.role == 'gl':
+            # 'gl' users can access all incidents filtered by device name
+            incidents = Incident.objects.filter(device__name=device)
+        else:
+            # Get the user's associated devices
+            user_devices = Device.objects.filter(client__msp__user=user_profile)
 
-        # Filter incidents by device name and user's devices
-        incidents = Incident.objects.filter(
-            device__name=device, device__in=user_devices)
+            # Filter incidents by device name and user's devices
+            incidents = Incident.objects.filter(
+                device__name=device, device__in=user_devices
+            )
+
+        # Prepare the incident data
         incident_data = list(incidents.values(
             'title', 'device__name', 'severity__level', 'resolved'))
         return Response(incident_data)
@@ -1858,12 +1920,18 @@ class IncidentsBySeverity(APIView):
             user_profile = user['user'] 
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-        # Get the user's associated devices
-        user_devices = Device.objects.filter(client__msp__user=user_profile)
-
-        # Filter incidents by severity and user's devices
-        incidents = Incident.objects.filter(
-            severity__level=severity, device__in=user_devices)
+        # Handle data access based on the user's role
+        if user_profile.role == 'gl':
+            # 'gl' users can access all incidents filtered by severity
+            incidents = Incident.objects.filter(severity__level=severity)
+        else:
+            # Get the user's associated devices
+            user_devices = Device.objects.filter(client__msp__user=user_profile)
+            
+            # Filter incidents by severity and user's devices
+            incidents = Incident.objects.filter(
+                severity__level=severity, device__in=user_devices
+            )
         incident_data = list(incidents.values(
             'title', 'device__name', 'severity__level', 'resolved'))
         return Response(incident_data)
