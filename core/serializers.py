@@ -192,6 +192,7 @@ class TeamSerializerr(serializers.ModelSerializer):
 class ClientSerializerr(serializers.ModelSerializer):
     team_member = UserProfileSerializer(
         read_only=True)  # For one-to-one relationship
+    msp = IntegrationMSPConfigSerializer(read_only = True)
 
     class Meta:
         model = Client
@@ -199,12 +200,20 @@ class ClientSerializerr(serializers.ModelSerializer):
 
 
 class DeviceSerializerr(serializers.ModelSerializer):
+    client = ClientSerializerr(read_only = True)
     class Meta:
         model = Device
         fields = ['id', 'name', 'device_type', 'ip_address', 'client']
 
+class JiraTicketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JiraTicket
+        fields = ["id", "issue_key", "project", "summary", "description", "status", "priority"]
 
 class IncidentSerializerr(serializers.ModelSerializer):
+    jira_ticket = JiraTicketSerializer(read_only=True)
+    device = DeviceSerializerr(read_only=True)
+
     class Meta:
         model = Incident
         fields = '__all__'  # This line includes all fields from the model

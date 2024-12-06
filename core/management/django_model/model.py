@@ -75,6 +75,12 @@ class IntegrationMSPConfig(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    # Jira-specific fields
+    jira_api_base_url = models.URLField(max_length=255,blank=True, null=True)
+    jira_user_email = models.EmailField(max_length=255,blank=True, null=True)
+    jira_api_token = models.CharField(max_length=512,blank=True, null=True)
+    jira_project_key = models.CharField(max_length=50,blank=True, null=True)
+    jira_project_name = models.CharField(max_length=255, default="")  # New Field
 
     class Meta:
         db_table = "msp_config"
@@ -145,6 +151,9 @@ class Incident(models.Model):
     assigned_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     pagent = models.CharField(max_length=50, null=True, blank=True)  # New column for Predicted Agent
+    jira_ticket = models.ForeignKey(
+        "JiraTicket", on_delete=models.SET_NULL, null=True, blank=True, related_name="related_incidents"
+    )  # New field linking Jira tickets
 
     def _str_(self):
         return self.title
@@ -232,3 +241,21 @@ class KnoxAuthtoken(models.Model):
     class Meta:
         managed = False
         db_table = 'knox_authtoken'
+
+class JiraTicket(models.Model):
+    issue_key = models.CharField(max_length=50)  # Unique Jira issue identifier
+    project = models.CharField(max_length=255)
+    summary = models.TextField()
+    description = models.TextField()
+    status = models.CharField(max_length=50)
+    priority = models.CharField(max_length=50, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    user = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)  # New field for the associated user profile
+
+    class Meta:
+        unique_together = ('user', 'issue_key')  # Ensures uniqueness per user and issue_key
+
+    def _str_(self):
+        return f"{self.project} - {self.issue_key}"

@@ -24,7 +24,7 @@ import requests
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework import viewsets
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils.datastructures import MultiValueDictKeyError
 import json
 from django.core.files.storage import default_storage
@@ -1044,35 +1044,37 @@ class IncidentManagementAPI(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # If the user role is 'gl', fetch all incidents
+        # Fetch incidents based on the user's role
         if user_profile.role == 'gl':
             incidents = Incident.objects.all()
         else:
-            # Fetch all incidents for the user's MSP
             incidents = Incident.objects.filter(
                 device__client__msp__user=user_profile
             )
 
-        # Handle filtering and sorting
+        # Handle filtering by Jira tickets
+        jira_ticket_filter = request.query_params.get('jira_ticket')
+        if jira_ticket_filter is not None:
+            # Convert the query parameter to a boolean value
+            jira_ticket_filter = jira_ticket_filter.lower() in ['true', '1', 'yes']
+            incidents = incidents.filter(jira_ticket__isnull=not jira_ticket_filter)
+
+        # Handle additional filtering and sorting
         pagent = request.query_params.get('pagent')
         sort_by = request.query_params.get('sort_by', 'created_at')
         order = request.query_params.get('order', 'desc')
 
-        # Apply filtering
         if pagent:
             incidents = incidents.filter(pagent__icontains=pagent)
 
-        # Apply sorting
         if order == 'desc':
             sort_by = f"-{sort_by}"
         incidents = incidents.order_by(sort_by)
- 
+
         # Handle specific incident retrieval or list all
         if incident_id is not None:
             # Fetch a specific incident
-            incident = get_object_or_404(
-                incidents, id=incident_id
-            )
+            incident = get_object_or_404(incidents, id=incident_id)
             serializer = IncidentSerializer(incident)
             return Response(serializer.data)
 
@@ -1874,7 +1876,7 @@ class IncidentsByStatus(APIView):
         # Prepare the response data
         incident_data = list(
             incidents.select_related('device', 'severity').values(
-                'title', 'device__name', 'severity__level', 'resolved'
+                'id','title', 'device__name', 'severity__level', 'resolved'
             )
         )
 
@@ -1907,7 +1909,7 @@ class IncidentsByDevice(APIView):
 
         # Prepare the incident data
         incident_data = list(incidents.values(
-            'title', 'device__name', 'severity__level', 'resolved'))
+            'id','title', 'device__name', 'severity__level', 'resolved'))
         return Response(incident_data)
 
 
@@ -1933,7 +1935,7 @@ class IncidentsBySeverity(APIView):
                 severity__level=severity, device__in=user_devices
             )
         incident_data = list(incidents.values(
-            'title', 'device__name', 'severity__level', 'resolved'))
+            'id','title', 'device__name', 'severity__level', 'resolved'))
         return Response(incident_data)
 
 
@@ -2664,3 +2666,176 @@ def log_retraining_data(data):
         print("Retraining data logged successfully.")
     except Exception as e:
         print(f"Error logging retraining data: {str(e)}")
+
+
+class FetchJiraIssues(APIView):
+    def get(self, request, token):
+        if not token:
+            return Response({"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = token_verification(token)
+        if user['status'] != 200:
+            return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Fetch Jira integration details
+        try:
+            msp_config = IntegrationMSPConfig.objects.get(user=user['user'], type__name='Jira')
+        except IntegrationMSPConfig.DoesNotExist:
+            return Response({"error": "Jira integration is not configured for this user."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Validate Jira configuration
+        jira_api_base_url = msp_config.jira_api_base_url
+        jira_user_email = msp_config.jira_user_email
+        jira_api_token = msp_config.jira_api_token
+        jira_project_key = msp_config.jira_project_key
+        jira_project_name = msp_config.jira_project_name
+
+        if not all([jira_api_base_url, jira_user_email, jira_api_token, jira_project_key,jira_project_name]):
+            return Response({"error": "Incomplete Jira integration configuration."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Fetch tickets from Jira using pagination
+        jira_url = f"{jira_api_base_url}/rest/api/2/search"
+        auth = (jira_user_email, jira_api_token)
+        start_at = 0
+        page_size = 100
+        total_tickets = []
+        severity_mapping = {
+            'Critical': 1,  # Severity Level ID in your database
+            'High': 2,
+            'Medium': 3,
+            'Low': 4
+        }
+
+        try:
+            # Start a database transaction
+            with transaction.atomic():
+                while True:
+                    params = {
+                        'jql': f'project={jira_project_name} AND status IS NOT EMPTY',
+                        'fields': 'summary,description,status,priority,created',
+                        'maxResults': page_size,
+                        'startAt': start_at,
+                    }
+                    response = requests.get(jira_url, auth=auth, params=params)
+                    if response.status_code != 200:
+                        return Response({
+                            "error": f"Failed to fetch Jira issues: {response.status_code}",
+                            "details": response.text
+                        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                    data = response.json()
+                    issues = data.get('issues', [])
+                    total_tickets.extend(issues)
+
+                    # Save tickets and incidents in batches
+                    for issue in issues:
+                        issue_key = issue['key']
+                        summary = issue['fields']['summary']
+                        description = issue['fields']['description']
+                        created_at = issue['fields']['created']
+                        priority_name = issue['fields']['priority']['name']  # 'High', 'Low', etc.
+                        severity_level_id = severity_mapping.get(priority_name, 3)  # Default to Medium if not found
+                        severity = Severity.objects.get(id=severity_level_id)
+
+                        # Ensure the issue_key is unique per user
+                        if JiraTicket.objects.filter(user=user['user'], issue_key=issue_key).exists():
+                            continue  # Skip saving if ticket already exists for this user
+
+                        # Create the JiraTicket object
+                        jira_ticket = JiraTicket.objects.create(
+                            issue_key=issue_key,
+                            project=jira_project_name,
+                            summary=summary,
+                            description=description or "",
+                            created_at=created_at,
+                            status=issue['fields']['status']['name'],
+                            priority=priority_name,
+                            user=user['user']  # Associate the ticket with the user profile
+                        )
+
+                        # if created:
+                        # Fetch or create required related objects
+                        integration_type, _ = IntegrationType.objects.update_or_create(name='Jira')
+                        msp_instance, _ = IntegrationMSPConfig.objects.get_or_create(user=user['user'], type=integration_type)
+                        client, _ = Client.objects.get_or_create(msp=msp_instance)
+                        device, _ = Device.objects.get_or_create(client=client, name="Default Device", device_type="Unknown")
+
+                        # Create Incident
+                        Incident.objects.create(
+                            title=summary,
+                            description=description or "",
+                            device=device,
+                            severity=severity,
+                            jira_ticket=jira_ticket,
+                            resolved=False,
+                            created_at=created_at,
+                            assigned_at=None,
+                        )
+
+                    # Check if there are more tickets to fetch
+                    if len(total_tickets) >= data.get('total', 0):
+                        break
+                    start_at += page_size
+
+            return Response({
+                "status": "success",
+                "message": f"Successfully fetched and stored {len(total_tickets)} Jira issues.",
+                "fetched_count": len(total_tickets)
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                "error": f"An error occurred while processing Jira issues: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
+class ValidateAndSaveJiraDetails(APIView):
+    def post(self, request, token):
+        print(token)
+        if not token:
+            return Response({"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate user from token
+        user = token_verification(token)
+        if user['status'] != 200:
+            return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Extract Jira details from the request
+        jira_api_base_url = request.data.get('jira_api_base_url')
+        jira_user_email = request.data.get('jira_user_email')
+        jira_api_token = request.data.get('jira_api_token')
+        jira_project_key = request.data.get('jira_project_key')
+        jira_project_name = request.data.get("jira_project_name")
+
+        # Validate inputs
+        if not all([jira_api_base_url, jira_user_email, jira_api_token, jira_project_key]):
+            return Response({"error": "All Jira details are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Test Jira API connection
+        test_url = f"{jira_api_base_url}/rest/api/2/project/{jira_project_key}"
+        auth = (jira_user_email, jira_api_token)
+
+        try:
+            response = requests.get(test_url, auth=auth)
+            if response.status_code == 200:
+                # Save details in IntegrationMSPConfig
+                integration_type, _ = IntegrationType.objects.get_or_create(name='Jira')
+                IntegrationMSPConfig.objects.update_or_create(
+                    user=user['user'],
+                    type=integration_type,
+                    defaults={
+                        'jira_api_base_url': jira_api_base_url,
+                        'jira_user_email': jira_user_email,
+                        'jira_api_token': jira_api_token,
+                        'jira_project_key': jira_project_key,
+                        'jira_project_name' : jira_project_name
+                    }
+                )
+                return Response({"message": "Jira details validated and saved successfully."}, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "error": "Failed to validate Jira details.",
+                    "details": response.json()
+                }, status=response.status_code)
+        except Exception as e:
+            return Response({"error": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

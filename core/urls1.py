@@ -132,6 +132,9 @@ urlpatterns = [
     path('incident/<int:incident_id>/post-resolution',PostResolutionClassification.as_view(), name ='human agent post resolution'),
 #     path('generate_workflow/', GenerateWorkflowView.as_view(), name='generate_workflow'),
      path('gl-dashboard/<str:token>', GLDashboardView.as_view(), name='gl-dashboard'),
-     path('update-role/<str:token>', UpdateUserRoleAPIView.as_view(), name='update user role')
+     path('update-role/<str:token>', UpdateUserRoleAPIView.as_view(), name='update user role'),
+
+     path('validate-and-save-jira/<str:token>', ValidateAndSaveJiraDetails.as_view(), name='validate_and_save_jira'),
+     path('fetch-jira-issues/<str:token>', FetchJiraIssues.as_view(), name='fetch_jira_issues'),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
