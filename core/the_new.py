@@ -35,6 +35,7 @@ import os
 from knox.models import AuthToken
 from incidentmanagement import settings
 import pytesseract
+from django.db.models import Q
 
 # Path to Tesseract executable (update as per your setup)
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
@@ -2839,3 +2840,55 @@ class ValidateAndSaveJiraDetails(APIView):
                 }, status=response.status_code)
         except Exception as e:
             return Response({"error": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def fetch_jira_predictions(request, token):
+    # Token verification
+    user = token_verification(token)
+    if user['status'] == 200:
+        user = user
+    else:
+        return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+    user_role = user['user'].role
+    user_instance = user['user']
+
+    print(request.query_params.get('status',None))
+
+    # Get query parameters for filtering and sorting
+    status_filter = request.GET.get('status', '')
+    priority_filter = request.GET.get('priority', '')
+    sort_by = request.GET.get('sort_by', 'id')  # Default sort by id
+    order = request.GET.get('order', 'asc')  # Default order is ascending
+
+
+    # Build filter conditions
+    filter_conditions = Q()
+
+    if status_filter:
+        filter_conditions &= Q(status=status_filter)
+    if priority_filter:
+        filter_conditions &= Q(priority=priority_filter)
+
+    # Determine sort order
+    if order == 'desc':
+        order_by = f'-{sort_by}'  # Descending order
+    else:
+        order_by = sort_by  # Ascending order
+
+    if user_role in ['gl', 'admin']:
+        # If user is admin or gl, fetch all tickets
+        tickets = JiraTicket.objects.filter(filter_conditions).values(
+            'issue_key', 'project', 'summary', 'description', 
+            'status', 'priority', 'predicted_agent', 'confidence_score'
+        ).order_by(order_by)
+    else:
+        # If user is not admin or gl, fetch tickets associated with the user
+        tickets = JiraTicket.objects.filter(
+            filter_conditions, user=user_instance
+        ).values(
+            'issue_key', 'project', 'summary', 'description', 
+            'status', 'priority', 'predicted_agent', 'confidence_score'
+        ).order_by(order_by)
+
+    return Response({"jira_tickets": list(tickets)})

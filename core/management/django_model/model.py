@@ -253,7 +253,8 @@ class JiraTicket(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
     user = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)  # New field for the associated user profile
-
+    predicted_agent = models.CharField(max_length=50, null=True, blank=True)  # e.g., Software, Human
+    confidence_score = models.FloatField(null=True, blank=True)  # Confidence %
     class Meta:
         unique_together = ('user', 'issue_key')  # Ensures uniqueness per user and issue_key
 

@@ -137,4 +137,6 @@ urlpatterns = [
      path('validate-and-save-jira/<str:token>', ValidateAndSaveJiraDetails.as_view(), name='validate_and_save_jira'),
      path('fetch-jira-issues/<str:token>', FetchJiraIssues.as_view(), name='fetch_jira_issues'),
 
+     path('fetch_jira_predictions/<str:token>',fetch_jira_predictions, name='fetch jira predictions'),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
