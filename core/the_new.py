@@ -2120,19 +2120,6 @@ def extract_text_from_video(request, token):
     return JsonResponse({'error': 'Invalid request method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
-import os
-import cv2
-import json
-import datetime
-import pytesseract
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from django.conf import settings
-from nltk.tokenize import sent_tokenize
-
-
-
 
 # def filter_and_simplify_actions(text):
 #     """
@@ -2892,3 +2879,179 @@ def fetch_jira_predictions(request, token):
         ).order_by(order_by)
 
     return Response({"jira_tickets": list(tickets)})
+
+class IntegrationStatusView(APIView):
+    def get(self, request, token):
+        """Get status of all integrations"""
+        user_verification = token_verification(token)
+        if user_verification['status'] != 200:
+            return Response(
+                {'message': user_verification['error']}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = user_verification['user']
+        
+        try:
+            # Get all available integration types
+            all_integrations = IntegrationType.objects.all()
+            
+            # Get user's connected integrations
+            connected_integrations = IntegrationMSPConfig.objects.filter(user=user)
+            
+            # Get IDs of connected integration types
+            connected_integration_types = connected_integrations.values_list('type_id', flat=True)
+            
+            # Get available (not yet connected) integration types
+            available_integrations = all_integrations.exclude(id__in=connected_integration_types)
+            
+            response_data = {
+                'connected_integrations': ConnectedIntegrationSerializer(
+                    connected_integrations, 
+                    many=True
+                ).data,
+                'available_integrations': IntegrationStatusSerializer(
+                    available_integrations, 
+                    many=True
+                ).data
+            }
+            
+            # Add integration-specific details
+            for integration in response_data['connected_integrations']:
+                integration['details'] = self.get_integration_details(
+                    integration['integration_type'],
+                    user,
+                    connected_integrations
+                )
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to fetch integration status: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def get_integration_details(self, integration_type, user, connected_integrations):
+        """Get specific details for each integration type"""
+        details = {}
+        
+        if integration_type == 'Jira':
+            jira_config = connected_integrations.filter(type__name='Jira').first()
+            if jira_config:
+                details.update({
+                    'project_count': JiraTicket.objects.filter(
+                        user=user
+                    ).values('project').distinct().count(),
+                    'ticket_count': JiraTicket.objects.filter(user=user).count(),
+                    'last_sync': getattr(jira_config, 'updated_at', None),
+                    'sync_enabled': getattr(jira_config, 'jira_sync_enabled', True)
+                })
+        
+        elif integration_type == 'ConnectWise':
+            connectwise_config = connected_integrations.filter(type__name='ConnectWise').first()
+            if connectwise_config:
+                details.update({
+                    'client_count': Client.objects.filter(
+                        msp__user=user, 
+                        msp__type__name='ConnectWise'
+                    ).count(),
+                    'last_sync': getattr(connectwise_config, 'updated_at', None)
+                })
+        
+        elif integration_type == 'HaloPSA':
+            halopsa_config = connected_integrations.filter(type__name='HaloPSA').first()
+            if halopsa_config:
+                details.update({
+                    'client_count': Client.objects.filter(
+                        msp__user=user, 
+                        msp__type__name='HaloPSA'
+                    ).count(),
+                    'last_sync': getattr(halopsa_config, 'updated_at', None)
+                })
+        
+        return details
+
+class IntegrationDeleteView(APIView):
+    def delete(self, request, integration_id, token):
+        """Delete an integration configuration"""
+        user_verification = token_verification(token)
+        if user_verification['status'] != 200:
+            return Response(
+                {'message': user_verification['error']}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = user_verification['user']
+        
+        try:
+            with transaction.atomic():
+                # Get the integration
+                integration = IntegrationMSPConfig.objects.get(
+                    id=integration_id,
+                    user=user
+                )
+                
+                integration_type = integration.type.name
+                
+                # Perform integration-specific cleanup
+                if integration_type == 'Jira':
+                    # Delete associated Jira tickets
+                    JiraTicket.objects.filter(user=user).delete()
+                elif integration_type == 'ConnectWise':
+                    # Delete associated clients and their devices
+                    Client.objects.filter(
+                        msp__user=user,
+                        msp__type__name='ConnectWise'
+                    ).delete()
+                
+                # Delete the integration configuration
+                integration.delete()
+                
+                return Response({
+                    'message': f'{integration_type} integration deleted successfully'
+                }, status=status.HTTP_200_OK)
+                
+        except IntegrationMSPConfig.DoesNotExist:
+            return Response({
+                'error': 'Integration not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to delete integration: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def perform_integration_cleanup(self, integration_type, user):
+        """Perform cleanup tasks specific to each integration type"""
+        cleanup_handlers = {
+            'Jira': self._cleanup_jira,
+            'ConnectWise': self._cleanup_connectwise,
+            'HaloPSA': self._cleanup_halopsa
+        }
+        
+        handler = cleanup_handlers.get(integration_type)
+        if handler:
+            handler(user)
+
+    def _cleanup_jira(self, user):
+        """Clean up Jira-specific data"""
+        # Delete Jira tickets
+        JiraTicket.objects.filter(user=user).delete()
+        
+        # Delete any Jira-related incidents
+        Incident.objects.filter(
+            jira_ticket__user=user
+        ).update(jira_ticket=None)
+
+    def _cleanup_connectwise(self, user):
+        """Clean up ConnectWise-specific data"""
+        # Delete associated clients and their devices
+        Client.objects.filter(
+            msp__user=user,
+            msp__type__name='ConnectWise'
+        ).delete()
+
+    def _cleanup_halopsa(self, user):
+        """Clean up HaloPSA-specific data"""
+        # Add HaloPSA-specific cleanup logic
+        pass

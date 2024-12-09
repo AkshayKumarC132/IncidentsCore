@@ -247,3 +247,68 @@ class IntegrationMSPConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = IntegrationMSPConfig
         fields = ['type', 'company_id', 'public_key', 'client_id', 'instance_url']
+
+class IntegrationStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IntegrationType
+        fields = ['id', 'name']
+
+class IntegrationDetailsSerializer(serializers.Serializer):
+    project_count = serializers.IntegerField(required=False)
+    ticket_count = serializers.IntegerField(required=False)
+    client_count = serializers.IntegerField(required=False)
+    last_sync = serializers.DateTimeField(required=False)
+    sync_enabled = serializers.BooleanField(required=False)
+    status = serializers.CharField(required=False)
+    error_message = serializers.CharField(required=False)
+
+class ConnectedIntegrationSerializer(serializers.ModelSerializer):
+    integration_type = serializers.CharField(source='type.name')
+    status = serializers.SerializerMethodField()
+    details = IntegrationDetailsSerializer(required=False)
+    
+    class Meta:
+        model = IntegrationMSPConfig
+        fields = [
+            'id', 
+            'integration_type',
+            'status',
+            'company_id',
+            'instance_url',
+            'created_at',
+            'updated_at',
+            'details',
+            'jira_api_base_url',
+        ]
+
+    def get_status(self, obj):
+        if not obj.type:
+            return 'Configuration Error'
+            
+        status_checks = {
+            'Jira': self._check_jira_status,
+            'ConnectWise': self._check_connectwise_status,
+            'HaloPSA': self._check_halopsa_status
+        }
+        
+        check_function = status_checks.get(obj.type.name)
+        if check_function:
+            return check_function(obj)
+        return 'Unknown'
+
+    def _check_jira_status(self, obj):
+        if not obj.jira_api_base_url or not obj.jira_api_token:
+            return 'Configuration Required'
+        if not getattr(obj, 'jira_sync_enabled', True):
+            return 'Sync Disabled'
+        return 'Active'
+
+    def _check_connectwise_status(self, obj):
+        if not obj.private_key or not obj.public_key:
+            return 'Configuration Required'
+        return 'Active'
+
+    def _check_halopsa_status(self, obj):
+        if not obj.client_secret or not obj.client_id:
+            return 'Configuration Required'
+        return 'Active'

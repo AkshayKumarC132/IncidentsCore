@@ -139,4 +139,7 @@ urlpatterns = [
 
      path('fetch_jira_predictions/<str:token>',fetch_jira_predictions, name='fetch jira predictions'),
 
+     path('integrations/status/<str:token>', IntegrationStatusView.as_view(), name='integration_status'),
+     path('integrations/<int:integration_id>/<str:token>', IntegrationDeleteView.as_view(), name='integration_delete'),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
