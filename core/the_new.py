@@ -2644,11 +2644,11 @@ class PostResolutionClassification(APIView):
             incident = Incident.objects.get(id=incident_id)
 
             # Ensure the incident was assigned to human initially
-            if incident.pagent not in ("human", None):
-                return Response(
-                    {'error': 'This incident was not assigned to a human agent'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # if incident.pagent != "human":
+            #     return Response(
+            #         {'error': 'This incident was not assigned to a human agent'},
+            #         status=status.HTTP_400_BAD_REQUEST
+            #     )
 
             # Extract data from the request
             classification = request.data.get('classification', '').strip().lower()

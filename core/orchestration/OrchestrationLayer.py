@@ -127,10 +127,12 @@ class OrchestrationLayer():
                 if assigned_agent:
                     incident.assigned_agent = assigned_agent
                     incident.assigned_at = timezone.now()
+                    incident.pagent = agent_type
                     incident.save()
             else:
                 incident.assigned_agent = assigned_agent
                 incident.assigned_at = timezone.now()
+                incident.pagent = agent_type
                 incident.save()
 
             # Log the assignment
