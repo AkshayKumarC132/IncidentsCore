@@ -36,6 +36,7 @@ from knox.models import AuthToken
 from incidentmanagement import settings
 import pytesseract
 from django.db.models import Q
+from datetime import timedelta  # Add this import at the top of the file
 
 # Path to Tesseract executable (update as per your setup)
 pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
@@ -282,7 +283,12 @@ def get_assigned_tickets(request,token):
     # user = request.user
     user_profile = user['user'] 
     user = UserProfile.objects.get(id=user_profile.id)
-    tickets = Incident.objects.filter(assigned_agent=user, resolved=False)
+    tickets = Incident.objects.filter(
+            assigned_agent=user,
+            resolved=False,
+        ).filter(
+            Q(pagent='human') | Q(pagent=None)
+        )
     ticket_data = [
         {
             'id': ticket.id,
@@ -2269,87 +2275,129 @@ def extract_text_from_video(request, token):
 
 #         except Exception as e:
 #             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @api_view(['POST'])
 @csrf_exempt
 def finalize_recording(request, token):
+    """
+    Finalize a screen recording by converting chunks to MP4 and analyzing the content.
+    
+    Args:
+        request: HTTP request containing ticket_id and optional confidence_threshold
+        token: Authentication token
+    
+    Returns:
+        JsonResponse with processing results or error message
+    """
+    # Validate user
     user = token_verification(token)
     if user['status'] != 200:
         return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
 
-    if request.method == 'POST':
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid request method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    try:
+        # Extract and validate request data
         ticket_id = request.data.get('ticket_id')
+        if not ticket_id:
+            return JsonResponse({'error': 'ticket_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Setup paths
         upload_dir = os.path.join(settings.BASE_DIR, 'logos', 'recordings', str(ticket_id))
         concatenated_file = os.path.join(upload_dir, 'concatenated_recording.bin')
         mp4_file_path = os.path.join(upload_dir, 'recording_final.mp4')
+        frames_dir = os.path.join(upload_dir, "frames")
 
-        # Check if the upload directory exists
+        # Ensure directories exist
+        os.makedirs(frames_dir, exist_ok=True)
+
+        # Validate upload directory
         if not os.path.exists(upload_dir):
-            return JsonResponse({'error': "Upload directory not found: Start Recording First..!!"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse(
+                {'error': "Upload directory not found: Start Recording First..!!"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Gather chunk files and concatenate them
-        chunk_files = sorted(
-            [os.path.join(upload_dir, f) for f in os.listdir(upload_dir) if f.startswith('chunk_') and f.endswith('.bin')]
-        )
+        # Process chunk files
+        chunk_files = sorted([
+            f for f in os.listdir(upload_dir)
+            if f.startswith('chunk_') and f.endswith('.bin')
+        ])
+        
         if not chunk_files:
-            return Response({"error": "No chunk files found in the directory"}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse(
+                {"error": "No chunk files found in the directory"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        # Concatenate chunks
         try:
             with open(concatenated_file, 'wb') as output_file:
-                for chunk_file in chunk_files:
-                    with open(chunk_file, 'rb') as f:
+                for chunk_name in chunk_files:
+                    chunk_path = os.path.join(upload_dir, chunk_name)
+                    with open(chunk_path, 'rb') as f:
                         output_file.write(f.read())
         except Exception as e:
-            return JsonResponse({'error': f"Failed to concatenate chunk files: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return JsonResponse(
+                {'error': f"Failed to concatenate chunk files: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-        # Convert the concatenated binary to an MP4 file
+        # Convert to MP4
         try:
             cap = cv2.VideoCapture(concatenated_file)
-
             if not cap.isOpened():
-                return JsonResponse({'error': "Failed to open concatenated file"}, status=status.HTTP_400_BAD_REQUEST)
+                return JsonResponse(
+                    {'error': "Failed to open concatenated file"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
+            # Get video properties
             frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fps = cap.get(cv2.CAP_PROP_FPS) or 20.0
 
+            # Initialize video writer
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out = cv2.VideoWriter(mp4_file_path, fourcc, fps, (frame_width, frame_height))
 
+            # Process frames
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
                     break
                 out.write(frame)
 
+            # Clean up video objects
             cap.release()
             out.release()
 
-            # Delete original chunk files
-            for chunk_file in chunk_files:
-                os.remove(chunk_file)
+            # Clean up temporary files
+            for chunk_name in chunk_files:
+                os.remove(os.path.join(upload_dir, chunk_name))
             os.remove(concatenated_file)
 
-            # Generate workflow from video frames
-            workflow = generate_refined_workflow(mp4_file_path, os.path.join(upload_dir, "frames"))
-
+            # Analyze video content
+            workflow = generate_refined_workflow(mp4_file_path, frames_dir)
             if 'steps' not in workflow or not workflow['steps']:
-                return JsonResponse({'error': "No relevant actions detected in video"}, status=status.HTTP_400_BAD_REQUEST)
+                return JsonResponse(
+                    {'error': "No relevant actions detected in video"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
+            # Process results
             description, predicted_agents = summarize_workflow_steps(workflow)
-
-            confidence_threshold = request.data.get('confidence_threshold', 75)  # Default to 75%
-            confidence_threshold = float(confidence_threshold)
-
-            # Determine assignment based on confidence
+            confidence_threshold = float(request.data.get('confidence_threshold', 75))
             assigned_agent = determine_agent_assignment(predicted_agents, confidence_threshold)
 
-            # If resolved, categorize under a specific agent
+            # Handle resolved cases
             if assigned_agent == 'human' and request.data.get('resolved_agent'):
                 resolved_agent = request.data['resolved_agent']
                 predicted_agents[resolved_agent] = "100.00%"
                 assigned_agent = resolved_agent
 
-            # Update incident details
+            # Update incident
             incident = Incident.objects.get(id=ticket_id)
             incident.description = description
             incident.pagent = assigned_agent
@@ -2365,9 +2413,16 @@ def finalize_recording(request, token):
             })
 
         except Exception as e:
-            return JsonResponse({'error': f"Failed to convert to MP4: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return JsonResponse(
+                {'error': f"Failed to process video: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-    return JsonResponse({'error': 'Invalid request method'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    except Exception as e:
+        return JsonResponse(
+            {'error': f"Unexpected error: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 def get_video_frame_rate(video_path):
     """
@@ -2531,7 +2586,7 @@ def generate_refined_workflow(video_path, output_dir, interval=5):
             action, agent_type, confidence, confidence_scores = filter_and_simplify_actions(text)
             if action:
                 frame_number = int(frame_file.split("_")[1].split(".")[0])
-                timestamp = str(datetime.timedelta(seconds=frame_number / frame_rate))
+                timestamp = str(timedelta(seconds=frame_number / frame_rate))
 
                 workflow_steps.append({
                     "frame": frame_file,
@@ -2589,7 +2644,7 @@ class PostResolutionClassification(APIView):
             incident = Incident.objects.get(id=incident_id)
 
             # Ensure the incident was assigned to human initially
-            if incident.pagent != "human":
+            if incident.pagent not in ("human", None):
                 return Response(
                     {'error': 'This incident was not assigned to a human agent'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -2609,6 +2664,7 @@ class PostResolutionClassification(APIView):
 
             # Update the incident record
             incident.pagent = classification
+            incident.assigned_agent = None
             if description:
                 incident.description = f"{incident.description}\n\nPost-resolution Update: {description}"
             incident.save()

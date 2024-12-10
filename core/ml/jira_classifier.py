@@ -1,34 +1,91 @@
 import joblib
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split,GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from ml.utils import load_data
 from core.models import JiraTicket
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+import nltk
+import re
+
+# Download NLTK resources
+nltk.download('stopwords')
+nltk.download('wordnet')
+
+def clean_text(text):
+    """
+    Preprocess and clean text data.
+    """
+    stop_words = set(stopwords.words("english"))
+    lemmatizer = WordNetLemmatizer()
+
+    # Lowercase, remove special characters and digits
+    text = re.sub(r"[^a-zA-Z]", " ", text).lower()
+    text = text.split()
+
+    # Remove stop words and apply lemmatization
+    text = [lemmatizer.lemmatize(word) for word in text if word not in stop_words]
+
+    return " ".join(text)
 
 def train_classifier():
     """
-    Train the Jira classifier and save the model.
+    Train the Jira classifier and save the model with improvements.
     """
+    # Load and clean data
     data = load_data()
     data = data.dropna(subset=['predicted_agent'])
+    data['text'] = (data['summary'] + " " + data['description']).apply(clean_text)
 
-    data['text'] = data['summary'] + " " + data['description']
+    # Features and labels
     X = data['text']
     y = data['predicted_agent']
 
-    vectorizer = TfidfVectorizer(max_features=5000)
+    # TF-IDF Vectorizer with bigrams and optimized parameters
+    vectorizer = TfidfVectorizer(
+        max_features=5000, 
+        ngram_range=(1, 2),  # Unigrams and bigrams
+        stop_words="english"
+    )
     X_transformed = vectorizer.fit_transform(X)
 
+    # Split data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(
         X_transformed, y, test_size=0.2, random_state=42
     )
 
-    classifier = RandomForestClassifier(n_estimators=100, random_state=42)
-    classifier.fit(X_train, y_train)
+    # Hyperparameter tuning for RandomForestClassifier
+    param_grid = {
+        'n_estimators': [50, 100, 200],
+        'max_depth': [None, 10, 20, 30],
+        'min_samples_split': [2, 5, 10],
+    }
 
-    joblib.dump(classifier, "jira_classifier.pkl")
+    rf_classifier = RandomForestClassifier(random_state=42)
+    grid_search = GridSearchCV(
+        estimator=rf_classifier,
+        param_grid=param_grid,
+        cv=3,
+        scoring='accuracy',
+        verbose=1,
+        n_jobs=-1
+    )
+    grid_search.fit(X_train, y_train)
+
+    # Best classifier from grid search
+    best_rf = grid_search.best_estimator_
+
+    # Evaluate on test data
+    y_pred = best_rf.predict(X_test)
+    print("Classification Report:")
+    print(classification_report(y_test, y_pred))
+    print("Accuracy:", accuracy_score(y_test, y_pred))
+
+    # Save the best classifier and vectorizer
+    joblib.dump(best_rf, "jira_classifier.pkl")
     joblib.dump(vectorizer, "tfidf_vectorizer.pkl")
 
     print("Jira Classifier trained and saved.")
