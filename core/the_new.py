@@ -274,21 +274,35 @@ def get_preferences(request,token):
 
 
 @api_view(['GET'])
-def get_assigned_tickets(request,token):
+def get_assigned_tickets(request, token):
     user = token_verification(token)
-    if user['status'] ==200:
+    if user['status'] == 200:
         user = user
     else:
-        return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
-    # user = request.user
+        return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+    
     user_profile = user['user'] 
     user = UserProfile.objects.get(id=user_profile.id)
+    
+    # Get sort parameters from query string
+    sort_by = request.query_params.get('sort_by', 'id')  # Default sort by ID
+    order = request.query_params.get('order', 'asc')     # Default ascending order
+    
+    # Build the base queryset
     tickets = Incident.objects.filter(
-            assigned_agent=user,
-            resolved=False,
-        ).filter(
-            Q(pagent='human') | Q(pagent=None)
-        )
+        assigned_agent=user,
+        resolved=False,
+    ).filter(
+        Q(pagent='human') | Q(pagent=None)
+    )
+    
+    # Apply sorting
+    if order.lower() == 'desc':
+        sort_by = f'-{sort_by}'
+    
+    # Add sorting to queryset
+    tickets = tickets.order_by(sort_by)
+    
     ticket_data = [
         {
             'id': ticket.id,
@@ -297,7 +311,7 @@ def get_assigned_tickets(request,token):
             'severity': ticket.severity.level,
             'assigned_at': ticket.assigned_at,
             'created_at': ticket.created_at,
-            'is_recording':False
+            'is_recording': False
         } for ticket in tickets
     ]
     return Response(ticket_data)
