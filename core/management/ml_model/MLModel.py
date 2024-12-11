@@ -160,17 +160,19 @@ class IncidentMLModel():
 
         try:
             prediction = self.time_model.predict(data)
-            return prediction[0]
+            # Get confidence score for time prediction
+            confidence_time = self.time_model.predict_proba(data).max() if hasattr(self.time_model, 'predict_proba') else None
+            return prediction[0], confidence_time
         except Exception as e:
             print(f"Prediction error: {e}")
-            return 1.0  # Default value if prediction fails
+            return 1.0, None  # Default values if prediction fails
 
     def predict_solution(self, incident_data):
         print(incident_data)
         
         if not self.vectorizer:
             print("Vectorizer is not loaded. Please train the model first.")
-            return "Human Intervention Needed"
+            return "Human Intervention Needed", None
 
         data = pd.DataFrame([{
             'severity_id': incident_data['severity_id'],
@@ -182,7 +184,7 @@ class IncidentMLModel():
             description_vectorized = self.vectorizer.transform(data['description']).toarray()
         except Exception as e:
             print(f"Error during vectorization: {e}")
-            return "Human Intervention Needed"
+            return "Human Intervention Needed", None
 
         prediction_data = pd.concat([
             data[['severity_id', 'device_id']].reset_index(drop=True), 
@@ -200,14 +202,14 @@ class IncidentMLModel():
             threshold = 0.6
             if confidence < threshold:
                 print(f"Low confidence ({confidence:.2f}), recommending Human Intervention.")
-                return "Human Intervention Needed"
+                return "Human Intervention Needed", confidence
 
             predicted_solution = self.le_solution.inverse_transform([predicted_solution_index])[0]
-            return predicted_solution
+            return predicted_solution, confidence
 
         except NotFittedError:
             print("Model not fitted. Please train the model first.")
-            return "Human Intervention Needed"
+            return "Human Intervention Needed", None
         except Exception as e:
             print(f"Prediction error: {e}")
-            return "Human Intervention Needed"
+            return "Human Intervention Needed", None

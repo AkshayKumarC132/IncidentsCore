@@ -67,7 +67,7 @@ class OrchestrationLayer():
             
     def get_unresolved_incidents(self):
         """Fetch unresolved incidents from the database."""
-        return Incident.objects.filter(resolved=False,id__gt=500).select_related('severity')
+        return Incident.objects.filter(resolved=False).select_related('severity')
 
     def map_incident_to_agent(self, incident):
         try:
@@ -78,9 +78,20 @@ class OrchestrationLayer():
                 'device_id': incident.device.id,
                 'description': incident.description
             }
-            recommended_solution = self.ml_model.predict_solution(incident_data)
+            
+            # Get predictions with confidence scores
+            predicted_time, time_confidence = self.ml_model.predict_time(incident_data)
+            recommended_solution, solution_confidence = self.ml_model.predict_solution(incident_data)
 
-            if recommended_solution == "Human Intervention Needed":
+            # Update incident with predictions and confidence scores
+            incident.predicted_resolution_time = predicted_time
+            incident.recommended_solution = recommended_solution
+            
+            # Use the higher confidence score between time and solution predictions
+            confidence_score = max(filter(None, [time_confidence, solution_confidence])) if any([time_confidence, solution_confidence]) else None
+            incident.confidence_score = confidence_score *100
+
+            if recommended_solution == "Human Intervention Needed" or (confidence_score and confidence_score < 0.6):
                 incident.human_intervention_needed = True
                 incident.save()
                 return 'human'
@@ -89,28 +100,28 @@ class OrchestrationLayer():
             incident.human_intervention_needed = False
             incident.save()
 
-            # Determine agent type
+            # Determine agent type based on predictions and keywords
             if ("network" in self.safe_lower(incident.title) or 
                 "network" in self.safe_lower(incident.description) or 
-                "network" in self.safe_lower(incident.recommended_solution) or
+                "network" in self.safe_lower(recommended_solution) or
                 "network" in self.safe_lower(incident.pagent)):
                 return 'network'
             elif ("security" in self.safe_lower(incident.title) or 
                 "security" in self.safe_lower(incident.description) or 
-                "security" in self.safe_lower(incident.recommended_solution) or
+                "security" in self.safe_lower(recommended_solution) or
                 "security" in self.safe_lower(incident.pagent)):
                 return 'security'
             elif ("hardware" in self.safe_lower(incident.title) or 
                 "hardware" in self.safe_lower(incident.description) or 
-                "hardware" in self.safe_lower(incident.recommended_solution) or
+                "hardware" in self.safe_lower(recommended_solution) or
                 "hardware" in self.safe_lower(incident.pagent)):
                 return 'hardware'
             else:
                 return 'software'
         except Exception as e:
-            print(str(e))
-            return str(e)
-        
+            print(f"Error in map_incident_to_agent: {str(e)}")
+            return 'human'  # Default to human agent in case of errors
+
     def safe_lower(self,value):
         return value.lower() if value else ""
 
@@ -122,7 +133,6 @@ class OrchestrationLayer():
             # Find or assign an agent
             assigned_agent = None
             if agent_type == 'human':
-                # Example: Fetch the first available human agent (modify as per your logic)
                 assigned_agent = UserProfile.objects.filter(role='human_agent', is_active=True).first()
                 if assigned_agent:
                     incident.assigned_agent = assigned_agent
@@ -142,33 +152,42 @@ class OrchestrationLayer():
                 assigned_at=timezone.now()
             )
 
+            # Convert numpy values to Python native types
+            confidence_score = float(incident.confidence_score) if incident.confidence_score is not None else None
+            predicted_resolution_time = float(incident.predicted_resolution_time) if incident.predicted_resolution_time is not None else None
+
             # Prepare task data
             task_data = {
                 'incident_id': incident.id,
                 'title': incident.title,
-                'description': incident.description,
-                'severity': incident.severity.level,
+                'description': incident.description or '',
+                'severity': incident.severity.level if incident.severity else '',
                 'agent_type': agent_type,
                 'task_description': f"Resolve incident: {incident.title}",
-                'log_id': log_entry.id,
+                'log_id': log_entry.id,  # Use the actual log entry ID
                 'human_intervention_needed': True if agent_type == 'human' else False,
-                'assigned_agent_id': assigned_agent.id if assigned_agent else None
+                'assigned_agent_id': assigned_agent.id if assigned_agent else None,
+                'confidence_score': confidence_score,
+                'predicted_resolution_time': predicted_resolution_time
             }
-            # Send task to RabbitMQ
+
+            # Send task to RabbitMQ with proper JSON serialization
             self.channel.basic_publish(
                 exchange='',
                 routing_key='task_queue',
-                body=json.dumps(task_data),
-                properties=pika.BasicProperties(delivery_mode=2)  # Persistent message
+                body=json.dumps(task_data, default=str),  # Use default=str for JSON serialization
+                properties=pika.BasicProperties(
+                    delivery_mode=2,  # Make message persistent
+                    content_type='application/json'
+                )
             )
-            print(f"Dispatched incident {incident.title} to {agent_type} agent.")
+            print(f"Dispatched incident {incident.title} to {agent_type} agent (Confidence: {confidence_score})")
+            print(f"Task data sent to queue: {task_data}")  # Debug log
 
-            # Notify human agent if applicable
-            # if agent_type == 'human' and assigned_agent:
-            #     send_email_notification(assigned_agent.email, incident.title)  # Replace with dynamic email fetching
             return agent_type
         except Exception as e:
-             return str(e)
+            print(f"Error in dispatch_incident: {str(e)}")
+            return str(e)
         
     def process_unresolved_incidents(self):
         """Fetch and dispatch unresolved incidents."""
@@ -177,49 +196,50 @@ class OrchestrationLayer():
             self.dispatch_incident(incident)
 
     def on_message(self, ch, method, properties, body):
-        task_data = json.loads(body)
-        log_id = task_data.get('log_id')
-        # agent_type = task_data.get('agent_type')
+        """Process the message from RabbitMQ and log resolution details."""
+        try:
+            task_data = json.loads(body)
+            print(f"Received task data: {task_data}")  # Debug log
 
-        if log_id:
-            log_entry = IncidentLog.objects.get(id=log_id)
-            log_entry.resolved_at = timezone.now()
-            log_entry.save()
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-        
-    # def on_message(self, ch, method, properties, body):
-    #     """Process the message from RabbitMQ and log resolution details."""
-    #     task_data = json.loads(body)
-    #     print(f"Received Task Data: {task_data}")
-
-    #     agent_type = task_data.get('agent_type')
-    #     log_id = task_data.get('log_id')
-
-    #     if agent_type in self.agents:
-    #         agent = self.agents[agent_type]
-    #         agent.process_task(task_data)
-
-    #         # Update log entry
-    #         if log_id:
-    #             log_entry = IncidentLog.objects.get(id=log_id)
-    #             log_entry.resolution_started_at = log_entry.resolution_started_at or timezone.now()
-    #             log_entry.resolved_at = timezone.now()
-    #             log_entry.resolution_time = (
-    #                 log_entry.resolved_at - log_entry.assigned_at
-    #             ).total_seconds() / 3600.0  # Resolution time in hours
-    #             log_entry.save()
-    #         else:
-    #             print("Error: log_id not found in task_data")
-
-    #     ch.basic_ack(delivery_tag=method.delivery_tag)
+            log_id = task_data.get('log_id')
+            if log_id:
+                try:
+                    log_entry = IncidentLog.objects.get(id=log_id)
+                    log_entry.resolved_at = timezone.now()
+                    log_entry.save()
+                    print(f"Updated log entry {log_id}")  # Debug log
+                except IncidentLog.DoesNotExist:
+                    print(f"Log entry {log_id} not found")
+                except Exception as e:
+                    print(f"Error updating log entry: {str(e)}")
+            
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        except json.JSONDecodeError as e:
+            print(f"Error decoding message: {str(e)}")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        except Exception as e:
+            print(f"Error processing message: {str(e)}")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def start_listening(self):
         """Start listening for tasks from RabbitMQ."""
-        self.channel.basic_consume(queue='task_queue', on_message_callback=self.on_message)
-        print(' [*] Waiting for messages. To exit press CTRL+C')
-        self.channel.start_consuming()
+        try:
+            self.channel.basic_qos(prefetch_count=1)  # Process one message at a time
+            self.channel.basic_consume(
+                queue='task_queue',
+                on_message_callback=self.on_message
+            )
+            print(' [*] Waiting for messages. To exit press CTRL+C')
+            self.channel.start_consuming()
+        except Exception as e:
+            print(f"Error in start_listening: {str(e)}")
 
 if __name__ == '__main__':
-    orchestrator = OrchestrationLayer()
-    orchestrator.process_unresolved_incidents()
-    orchestrator.start_listening()
+    try:
+        orchestrator = OrchestrationLayer()
+        orchestrator.process_unresolved_incidents()
+        orchestrator.start_listening()
+    except KeyboardInterrupt:
+        print("Shutting down...")
+    except Exception as e:
+        print(f"Error in main: {str(e)}")

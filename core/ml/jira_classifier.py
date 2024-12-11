@@ -118,7 +118,7 @@ def update_predictions():
     classifier = joblib.load("jira_classifier.pkl")
     vectorizer = joblib.load("tfidf_vectorizer.pkl")
 
-    unresolved_tickets = JiraTicket.objects.filter(predicted_agent__isnull=True)
+    unresolved_tickets = JiraTicket.objects.filter(predicted_category__isnull=True)
 
     for ticket in unresolved_tickets:
         text = f"{ticket.summary} {ticket.description}"
@@ -128,6 +128,7 @@ def update_predictions():
         confidence_score = max(classifier.predict_proba(transformed_text)[0]) * 100
 
         ticket.predicted_agent = predicted_agent
+        ticket.predicted_category = predicted_agent
         ticket.confidence_score = confidence_score
         ticket.save()
 

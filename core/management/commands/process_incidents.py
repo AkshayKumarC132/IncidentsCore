@@ -25,11 +25,11 @@ def process_incident_predictions():
         # Make predictions using the trained model
         try:
             if ml_model.time_model and ml_model.solution_model:  # Ensure models are trained
-                predicted_time = ml_model.predict_time(incident_data)
-                predicted_desc = ml_model.predict_solution(incident_data)
+                predicted_time, time_confidence = ml_model.predict_time(incident_data)
+                predicted_solution, solution_confidence = ml_model.predict_solution(incident_data)
             else:
-                predicted_time = 1.0  # Default resolution time if model is not trained
-                predicted_desc = "No prediction available"
+                predicted_time = 1.0, None  # Default resolution time if model is not trained
+                predicted_desc = "No prediction available", None
 
             # Log the predictions
             print(f"Predicted Resolution Time: {predicted_time} hours")
@@ -39,9 +39,12 @@ def process_incident_predictions():
             predicted_time = 1.0  # Default on error
             predicted_desc = "Prediction error occurred"
 
-        # Update incident with predictions
+        # Use the higher confidence score between time and solution predictions
+        confidence_score = max(filter(None, [time_confidence, solution_confidence])) if any([time_confidence, solution_confidence]) else None
+
         incident.predicted_resolution_time = predicted_time
-        incident.recommended_solution = predicted_desc
+        incident.recommended_solution = predicted_solution
+        incident.confidence_score = confidence_score
         incident.save()
 
         print(f"Incident {incident.id} updated with predictions.")

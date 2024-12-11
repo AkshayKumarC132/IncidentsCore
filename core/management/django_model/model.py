@@ -154,6 +154,7 @@ class Incident(models.Model):
     jira_ticket = models.ForeignKey(
         "JiraTicket", on_delete=models.SET_NULL, null=True, blank=True, related_name="related_incidents"
     )  # New field linking Jira tickets
+    confidence_score = models.FloatField(null=True, blank=True)  # Confidence %
 
     def _str_(self):
         return self.title
@@ -255,6 +256,9 @@ class JiraTicket(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)  # New field for the associated user profile
     predicted_agent = models.CharField(max_length=50, null=True, blank=True)  # e.g., Software, Human
     confidence_score = models.FloatField(null=True, blank=True)  # Confidence %
+    predicted_category = models.CharField(max_length=50, null=True, blank=True)  # Bug, Feature Request, etc.
+    predicted_resolution_time = models.FloatField(null=True, blank=True)  # Predicted resolution time (hours/days)
+
     class Meta:
         unique_together = ('user', 'issue_key')  # Ensures uniqueness per user and issue_key
 

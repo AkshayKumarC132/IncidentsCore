@@ -39,8 +39,8 @@ from django.db.models import Q
 from datetime import timedelta  # Add this import at the top of the file
 
 # Path to Tesseract executable (update as per your setup)
-pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 
 @api_view(['POST'])
@@ -311,7 +311,9 @@ def get_assigned_tickets(request, token):
             'severity': ticket.severity.level,
             'assigned_at': ticket.assigned_at,
             'created_at': ticket.created_at,
-            'is_recording': False
+            'is_recording': False,
+            # logos/recordings/4/recording_final.mp4
+            'video_path': f'recordings/{ticket.id}/recording_final.mp4' if ScreenRecording.objects.filter(incident=ticket.id).exists() else None
         } for ticket in tickets
     ]
     return Response(ticket_data)
@@ -684,6 +686,7 @@ def upload_recording_chunk(request, token):
     # Save the chunk with incremental naming
     chunk_index = len(os.listdir(recordings_dir))  # Get current chunk count
     chunk_path = os.path.join(recordings_dir, f"chunk_{chunk_index}.bin")
+    
 
     try:
         with open(chunk_path, 'wb') as f:
@@ -691,7 +694,11 @@ def upload_recording_chunk(request, token):
                 f.write(chunk)
     except Exception as e:
         return Response({"error": f"Failed to save file: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
+    ScreenRecording.objects.update_or_create(
+        incident=ticket_id,
+        defaults={'is_recording': True}  # You can specify other fields to update here as needed
+    )
     return Response({"status": "Chunk uploaded successfully", "ticket_id": ticket_id}, status=status.HTTP_201_CREATED)
 
     # # Extract the file extension
@@ -2391,6 +2398,13 @@ def finalize_recording(request, token):
             for chunk_name in chunk_files:
                 os.remove(os.path.join(upload_dir, chunk_name))
             os.remove(concatenated_file)
+
+            # Update ScreenRecording entry with the file path
+            relative_path = f'recordings/{ticket_id}/recording_final.mp4'
+            if ScreenRecording.objects.filter(incident=ticket_id).exists():
+                screen_recording = ScreenRecording.objects.get(incident=ticket_id)
+                screen_recording.file_path = relative_path
+                screen_recording.save()
 
             # Analyze video content
             workflow = generate_refined_workflow(mp4_file_path, frames_dir)
