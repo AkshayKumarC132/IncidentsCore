@@ -264,3 +264,20 @@ class JiraTicket(models.Model):
 
     def _str_(self):
         return f"{self.project} - {self.issue_key}"
+
+class ActiveModel(models.Model):
+    MODEL_TYPE_CHOICES = [
+        ('jira', 'Jira Model'),
+        ('incident', 'Incident Model'),
+    ]
+
+    user = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)  # New field for the associated user profile
+    model_type = models.CharField(max_length=20, choices=MODEL_TYPE_CHOICES)
+    model_name = models.CharField(max_length=255)  # Name of the active model file
+    activated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('model_type',)  # Ensure only one active model per type
+
+    def _str_(self):
+        return f"{self.model_type}: {self.model_name}"

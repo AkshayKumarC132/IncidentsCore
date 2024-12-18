@@ -21,6 +21,8 @@ from incidentmanagement import settings
 from django.conf.urls.static import static
 # from . import human_tickets, recording
 from .gl_view import *
+from .model_code import *
+
 
 router = DefaultRouter()
 # router.register(r'customers', ClientViewSet)
@@ -141,5 +143,17 @@ urlpatterns = [
 
      path('integrations/status/<str:token>', IntegrationStatusView.as_view(), name='integration_status'),
      path('integrations/<int:integration_id>/<str:token>', IntegrationDeleteView.as_view(), name='integration_delete'),
+
+     # get_user_role
+     path("get_user_role/<str:token>", get_user_role, name=''),
+
+
+     path('models/upload/<str:token>', upload_model, name='upload_model'),
+     path('models/list/<str:token>', list_models, name='list_models'),
+     path('models/delete/<str:token>', delete_model, name='delete_model'),
+
+     path('models/set_active/<str:token>', set_active_model, name='set_active_model'),
+
+     path('models/edit/<str:model_name>/', edit_model_parameters, name='edit_model_parameters'),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

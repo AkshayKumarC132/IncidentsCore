@@ -37,6 +37,7 @@ from incidentmanagement import settings
 import pytesseract
 from django.db.models import Q
 from datetime import timedelta  # Add this import at the top of the file
+import joblib
 
 # Get the current operating system
 os_name = os.name
@@ -3143,3 +3144,55 @@ class IntegrationDeleteView(APIView):
         """Clean up HaloPSA-specific data"""
         # Add HaloPSA-specific cleanup logic
         pass
+
+def get_user_role(request, token):
+    if not token:
+            return Response({"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
+    # Validate user from token
+    user = token_verification(token)
+    if user['status'] != 200:
+        return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
+    return JsonResponse({"role": user['user'].role}, status = status.HTTP_200_OK)
+
+
+# @csrf_exempt
+# def get_model_parameters(request):
+#     model_name = request.GET.get("model")
+#     if model_name == "Device Incident Response":
+#         params = joblib.load("device_model_params.pkl")
+#         metrics = joblib.load("device_model_metrics.pkl")
+#     elif model_name == "JIRA Ticket Classification":
+#         params = joblib.load("jira_model_params.pkl")
+#         metrics = joblib.load("jira_model_metrics.pkl")
+#     else:
+#         return JsonResponse({"error": "Invalid model name"}, status=400)
+#     return JsonResponse({"parameters": params, "metrics": metrics})
+
+# @csrf_exempt
+# def update_model_parameters(request):
+#     data = json.loads(request.body)
+#     model_name = data.get("model")
+#     new_params = data.get("parameters")
+
+#     if model_name == "Device Incident Response":
+#         joblib.dump(new_params, "device_model_params.pkl")
+#     elif model_name == "JIRA Ticket Classification":
+#         joblib.dump(new_params, "jira_model_params.pkl")
+#     else:
+#         return JsonResponse({"error": "Invalid model name"}, status=400)
+    
+#     return JsonResponse({"message": "Parameters updated successfully!"})
+
+# @csrf_exempt
+# def retrain_model(request):
+#     data = json.loads(request.body)
+#     model_name = data.get("model")
+
+#     if model_name == "Device Incident Response":
+#         retrain_device_model()
+#     elif model_name == "JIRA Ticket Classification":
+#         retrain_jira_model()
+#     else:
+#         return JsonResponse({"error": "Invalid model name"}, status=400)
+    
+#     return JsonResponse({"message": "Model re-training completed successfully!"})
