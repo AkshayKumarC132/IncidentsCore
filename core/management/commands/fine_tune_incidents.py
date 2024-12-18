@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 import torch
 from django.core.management.base import BaseCommand
 import os
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 
 # Import Incident model
@@ -76,6 +77,19 @@ class Command(BaseCommand):
         train_dataset = IncidentDataset(train_encodings, torch.tensor(y_train_encoded))
         test_dataset = IncidentDataset(test_encodings, torch.tensor(y_test_encoded))
 
+        # Define compute_metrics function
+        def compute_metrics(eval_pred):
+            logits, labels = eval_pred
+            predictions = torch.argmax(torch.tensor(logits), dim=1)
+            accuracy = accuracy_score(labels, predictions)
+            precision, recall, f1, _ = precision_recall_fscore_support(labels, predictions, average="weighted")
+            return {
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+            }
+
         # Load pre-trained model
         print("Loading pre-trained model...")
         model = DistilBertForSequenceClassification.from_pretrained(
@@ -98,19 +112,22 @@ class Command(BaseCommand):
         #     fp16=True,  # Mixed precision
         #     load_best_model_at_end=True,
         # )
+        # Update training arguments
         training_args = TrainingArguments(
             output_dir="./incident_model",
             evaluation_strategy="epoch",
             save_strategy="epoch",
             logging_dir="./logs",
             logging_steps=10,
-            per_device_train_batch_size=16,  # Larger batch size
+            per_device_train_batch_size=4,  # Larger batch size
             per_device_eval_batch_size=16,
             num_train_epochs=1,  # Reduce epochs
             gradient_accumulation_steps=4,  # Simulate larger batch size
             fp16=True,  # Mixed precision
             load_best_model_at_end=True,
-            metric_for_best_model="accuracy",
+            metric_for_best_model="accuracy",  # Use accuracy as the metric
+            save_steps=500,
+            save_total_limit=3,  # Keep only the last 3 checkpoints
         )
 
         # Trainer
@@ -121,6 +138,7 @@ class Command(BaseCommand):
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
             tokenizer=tokenizer,
+            compute_metrics=compute_metrics,  # Add the metrics function
         )
 
         # Train and save the model

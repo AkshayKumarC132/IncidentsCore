@@ -38,10 +38,13 @@ import pytesseract
 from django.db.models import Q
 from datetime import timedelta  # Add this import at the top of the file
 
-# Path to Tesseract executable (update as per your setup)
-# pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Get the current operating system
+os_name = os.name
 
+if os_name == 'nt':  # Windows
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+elif os_name == 'posix':  # Linux/Mac
+    pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 @api_view(['POST'])
 def register(request):
@@ -292,6 +295,7 @@ def get_assigned_tickets(request, token):
     tickets = Incident.objects.filter(
         assigned_agent=user,
         resolved=False,
+        jira_ticket = None
     ).filter(
         Q(pagent='human') | Q(pagent=None)
     )
