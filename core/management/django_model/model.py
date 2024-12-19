@@ -281,3 +281,38 @@ class ActiveModel(models.Model):
 
     def _str_(self):
         return f"{self.model_type}: {self.model_name}"
+    
+class MLModel(models.Model):
+    name = models.CharField(max_length=255)
+    type = models.CharField(max_length=100)  # e.g., 'JIRA', 'Incident'
+    status = models.CharField(
+        max_length=50, choices=[('Active', 'Active'), ('Inactive', 'Inactive')]
+    )
+    dependencies = models.ManyToManyField('self', blank=True, symmetrical=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def _str_(self):
+        return self.name
+    
+
+class ModelManagement(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    file = models.FileField(upload_to='models/', null=True)
+    size = models.FloatField(default=0)  # Store size in KB
+    status = models.CharField(
+        max_length=10,
+        choices=[('active', 'Active'), ('inactive', 'Inactive')],
+        default='inactive'
+    )
+    parameters = models.JSONField(default=dict)  # Store editable parameters
+
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'model_management'
+        verbose_name = 'Model Management'
+        verbose_name_plural = 'Model Management'
+
+    def _str_(self):
+        return f"{self.name} ({self.status})"

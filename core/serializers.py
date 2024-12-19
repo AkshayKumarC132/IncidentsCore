@@ -312,3 +312,8 @@ class ConnectedIntegrationSerializer(serializers.ModelSerializer):
         if not obj.client_secret or not obj.client_id:
             return 'Configuration Required'
         return 'Active'
+    
+class MLModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MLModel
+        fields = '__all__'

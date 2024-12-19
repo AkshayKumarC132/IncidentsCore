@@ -7,13 +7,17 @@ from django.utils.decorators import method_decorator
 from incidentmanagement import settings
 from django.core.files.storage import default_storage
 from .the_new import token_verification
-from core.models import JiraTicket, Incident, UserProfile, ActiveModel
+from core.models import JiraTicket, Incident, UserProfile, ActiveModel, MLModel
 from rest_framework.response import Response
 from rest_framework import status
 import shutil
 from django.utils.timezone import now
 import json
 from rest_framework.decorators import api_view
+from .serializers import *
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
+
 
 MODEL_DIR = os.path.join(settings.BASE_DIR, "trained_models")
 
@@ -207,3 +211,88 @@ def edit_model_parameters(request, model_name):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MLModelView(APIView):
+    def get(self, request):
+        models = MLModel.objects.all()
+        print(models)
+        serializer = MLModelSerializer(models, many=True)
+        print(serializer.data)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = MLModelSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        try:
+            model = MLModel.objects.get(pk=pk)
+            model.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except MLModel.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+# Get all models
+@csrf_exempt
+def get_models(request):
+    if request.method == 'GET':
+        models = ModelManagement.objects.all()
+        print(models)
+        response = [{"id": model.id, "name": model.name, "size": model.size, "status": model.status} for model in models]
+        return JsonResponse({"models": response}, status=200)
+    return JsonResponse({"error": "Invalid request method"}, status=405)
+
+# Add a new model
+@csrf_exempt
+def add_model(request):
+    if request.method == 'POST':
+        file = request.FILES.get("file")
+        if not file:
+            return JsonResponse({"error": "File is required"}, status=400)
+
+        model = ModelManagement(name=file.name, size=file.size, status="Inactive")
+        model.save()
+
+        # Save the file
+        with open(os.path.join("models/", file.name), "wb") as f:
+            for chunk in file.chunks():
+                f.write(chunk)
+
+        return JsonResponse({"message": "Model uploaded successfully"}, status=201)
+    return JsonResponse({"error": "Invalid request method"}, status=405)
+
+# Delete a model
+@csrf_exempt
+def delete_model(request, model_id):
+    if request.method == 'DELETE':
+        model = get_object_or_404(ModelManagement, id=model_id)
+        file_path = os.path.join("models/", model.name)
+
+        # Delete the model file
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        # Delete from the database
+        model.delete()
+        return JsonResponse({"message": "Model deleted successfully"}, status=200)
+    return JsonResponse({"error": "Invalid request method"}, status=405)
+
+
+@csrf_exempt
+def edit_model(request, model_id):
+    if request.method == 'PATCH':
+        try:
+            model = ModelManagement.objects.get(id=model_id)
+            params = request.POST.get('parameters', '{}')
+            model.parameters = params
+            model.save()
+            return JsonResponse({'message': f"Model {model.name} updated successfully."})
+        except ModelManagement.DoesNotExist:
+            return JsonResponse({'error': 'Model not found'}, status=404)
+
+    return JsonResponse({'error': 'Invalid request method'}, status=400)

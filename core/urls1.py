@@ -21,7 +21,7 @@ from incidentmanagement import settings
 from django.conf.urls.static import static
 # from . import human_tickets, recording
 from .gl_view import *
-from .model_code import *
+from .model_management import *
 
 
 router = DefaultRouter()
@@ -148,12 +148,11 @@ urlpatterns = [
      path("get_user_role/<str:token>", get_user_role, name=''),
 
 
-     path('models/upload/<str:token>', upload_model, name='upload_model'),
-     path('models/list/<str:token>', list_models, name='list_models'),
-     path('models/delete/<str:token>', delete_model, name='delete_model'),
+     path('upload-model/', upload_model, name='upload_model'),
+     path('set-active/<int:model_id>/', set_active_model, name='set_active_model'),
+     path('delete-model/<int:model_id>/', delete_model, name='delete_model'),
+     path('edit-model/<int:model_id>/', edit_model, name='edit_model'),
+     path('fetch-models/', fetch_models, name='fetch_models'),
 
-     path('models/set_active/<str:token>', set_active_model, name='set_active_model'),
-
-     path('models/edit/<str:model_name>/', edit_model_parameters, name='edit_model_parameters'),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
