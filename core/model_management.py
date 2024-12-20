@@ -7,6 +7,7 @@ from django.db import IntegrityError
 from rest_framework.parsers import JSONParser
 import joblib
 from rest_framework.decorators import api_view
+from incidentmanagement import settings
 
 @csrf_exempt
 def upload_model(request):
@@ -80,7 +81,7 @@ def edit_model(request, model_name):
 
     try:
         data = JSONParser().parse(request)
-        model_path = f"models/{model_name}"
+        model_path = os.path.join(settings.BASE_DIR, 'models', model_name)
 
         # Load the model
         model = joblib.load(model_path)
