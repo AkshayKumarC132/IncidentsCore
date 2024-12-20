@@ -151,8 +151,10 @@ urlpatterns = [
      path('upload-model/', upload_model, name='upload_model'),
      path('set-active/<int:model_id>/', set_active_model, name='set_active_model'),
      path('delete-model/<int:model_id>/', delete_model, name='delete_model'),
-     path('edit-model/<int:model_id>/', edit_model, name='edit_model'),
+     # path('edit-model/<int:model_id>/', edit_model, name='edit_model'),
      path('fetch-models/', fetch_models, name='fetch_models'),
+
+     path('models/<str:model_name>/edit/', edit_model, name='edit_model'),
 
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
