@@ -1467,9 +1467,9 @@ def fetch_connectwise_data(config):
         url_clients = f"{config.instance_url}/v4_6_release/apis/3.0/company/companies"
         response = requests.get(url_clients, headers=headers)
 
+        clients_lookup = {}
         if response.status_code == 200:
             clients_data = response.json()
-            clients_lookup = {}
 
             # Create or update clients and build a lookup dictionary
             for client_data in clients_data:
@@ -1482,40 +1482,53 @@ def fetch_connectwise_data(config):
                             'phone': client_data.get('phoneNumber', '')
                         }
                     )
-                    clients_lookup[client_data['name']
-                                   ] = client  # Add to lookup
+                    clients_lookup[client_data['name']] = client  # Add to lookup
                 except Exception as e:
-                    print(
-                        f"Error processing client {client_data['name']}: {str(e)}")
+                    print(f"Error processing client {client_data['name']}: {str(e)}")
+
+        # Create a default client if none is found
+        default_client, _ = Client.objects.get_or_create(
+            name="Default Client",
+            msp=config,
+            defaults={
+                'email': '',
+                'phone': ''
+            }
+        )
 
         # Fetch Devices and associate them with the correct client based on the client name
         url_devices = f"{config.instance_url}/v4_6_release/apis/3.0/company/configurations"
         response_devices = requests.get(url_devices, headers=headers)
 
+        devices_lookup = {}
         if response_devices.status_code == 200:
             devices_data = response_devices.json()
             for device_data in devices_data:
                 try:
-                    # Lookup client by name from the devices data
-                    client_name = device_data.get('company', {}).get(
-                        'name')  # Assuming 'company' key holds client info
-                    client = clients_lookup.get(client_name)
+                    client_name = device_data.get('company', {}).get('name')
+                    client = clients_lookup.get(client_name, default_client)
 
-                    if client:
-                        Device.objects.update_or_create(
-                            name=device_data['name'],
-                            client=client,  # Associate with the correct Client
-                            defaults={
-                                'device_type': device_data.get('type', {}).get('name'),
-                                'ip_address': device_data.get('ipAddress', '')
-                            }
-                        )
-                    else:
-                        print(
-                            f"Client not found for device: {device_data['name']}")
-
+                    device, created = Device.objects.update_or_create(
+                        name=device_data['name'],
+                        client=client,  # Associate with the correct Client
+                        defaults={
+                            'device_type': device_data.get('type', {}).get('name'),
+                            'ip_address': device_data.get('ipAddress', '')
+                        }
+                    )
+                    devices_lookup[device_data['name']] = device
                 except Exception as e:
                     print(f"Error updating or creating device: {str(e)}")
+
+        # Create a default device if none is found
+        default_device, _ = Device.objects.get_or_create(
+            name="Default Device",
+            client=default_client,
+            defaults={
+                'device_type': 'Unknown',
+                'ip_address': ''
+            }
+        )
 
         # Fetch Incidents and associate them with the correct client and devices
         url_incidents = f"{config.instance_url}/v4_6_release/apis/3.0/service/tickets"
@@ -1525,60 +1538,69 @@ def fetch_connectwise_data(config):
             incidents_data = response_incidents.json()
             for incident_data in incidents_data:
                 try:
-                    # Lookup client by name (assuming incidents have a client key with a name)
+                    # Lookup client by name
                     client_name = incident_data.get('company', {}).get('name')
-                    client = clients_lookup.get(client_name)
+                    client = clients_lookup.get(client_name, default_client)
 
-                    if client:
-                        # Get related device for the incident
-                        device = Device.objects.filter(
-                            client=client).first()  # Assuming the first device
+                    # Get related device for the incident
+                    device_name = incident_data.get('configurationItem', {}).get('name')
+                    device = devices_lookup.get(device_name, default_device)
 
-                        if device:
-                            # Get or create Severity level
-                            severity, _ = Severity.objects.get_or_create(
-                                level=incident_data.get('severity', 'Low')
-                            )
+                    # Get or create Severity level
+                    severity, _ = Severity.objects.get_or_create(
+                        level=incident_data.get('severity', 'Low')
+                    )
 
-                            incident, created = Incident.objects.update_or_create(
-                                title=incident_data['summary'],
-                                device=device,  # Associate with the Device
-                                severity=severity,  # Associate with the Severity
-                                defaults={
-                                    'description': incident_data.get('description', incident_data.get('summary','')),
-                                    'resolved': incident_data.get('status', {}).get('name', '') == 'Closed',
-                                    'recommended_solution': incident_data.get('resolution', ''),
-                                    'predicted_resolution_time': incident_data.get('estimatedResolutionTime', None)
-                                }
-                            )
-                            # Use your ML model to predict the time and solution
-                            model = IncidentMLModel()
-                            predicted_time = model.predict_time({
-                                'severity_id': incident.severity_id,
-                                'device_id': incident.device_id
-                            })
+                    incident, created = Incident.objects.update_or_create(
+                        title=incident_data['summary'],
+                        device=device,  # Associate with the Device
+                        severity=severity,  # Associate with the Severity
+                        defaults={
+                            'description': incident_data.get('description', incident_data.get('summary', '')),
+                            'resolved': incident_data.get('status', {}).get('name', '') == 'Closed',
+                            'recommended_solution': incident_data.get('resolution', ''),
+                            'predicted_resolution_time': None  # Placeholder for now
+                        }
+                    )
 
-                            predicted_solution = model.predict_solution({
-                                'severity_id': incident.severity_id,
-                                'device_id': incident.device_id,
-                                'description': incident.description
-                            })
+                    # Use your ML model to predict the time and solution
+                    model = IncidentMLModel()
 
-                            # Update the incident with predicted values
-                            incident.predicted_resolution_time = predicted_time
-                            incident.recommended_solution = predicted_solution
-                            incident.save()
-                        else:
-                            print(f"No device found for client: {client_name}")
+                    # Predict the resolution time
+                    predicted_time = model.predict_time({
+                        'severity_id': incident.severity_id,
+                        'device_id': incident.device_id
+                    })
+
+                    # Handle tuple output for predicted_time
+                    if isinstance(predicted_time, tuple):
+                        predicted_time_value = predicted_time[0]  # Use the first element as the predicted time
                     else:
-                        print(
-                            f"Client not found for incident: {incident_data['summary']}")
+                        predicted_time_value = predicted_time
 
+                    # Predict the solution
+                    predicted_solution = model.predict_solution({
+                        'severity_id': incident.severity_id,
+                        'device_id': incident.device_id,
+                        'description': incident.description
+                    })
+
+                    # Update the incident with predicted values
+                    incident.predicted_resolution_time = predicted_time_value
+                    incident.recommended_solution = predicted_solution
+                    incident.save()
+
+                    # Log confidence if applicable
+                    if isinstance(predicted_time, tuple) and len(predicted_time) > 1 and predicted_time[1] is not None:
+                        confidence = predicted_time[1]
+                        if confidence < 0.7:  # Assuming 0.7 as a threshold for low confidence
+                            print(f"Low confidence ({confidence:.2f}), recommending Human Intervention.")
                 except Exception as e:
                     print(f"Error updating or creating incident: {str(e)}")
 
     except Exception as e:
         return Response({str(e)})
+
 
 
 @csrf_exempt
@@ -3151,6 +3173,7 @@ def get_user_role(request, token):
     # Validate user from token
     user = token_verification(token)
     if user['status'] != 200:
+        print('000000000')
         return Response({'message': user['error']}, status=status.HTTP_400_BAD_REQUEST)
     return JsonResponse({"role": user['user'].role}, status = status.HTTP_200_OK)
 
