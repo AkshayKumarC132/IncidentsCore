@@ -51,7 +51,7 @@ class OrchestrationLayer():
             Thank you,
             Automated Incident Response System
             """
-            recipient_list = ["human.agent@example.com"]  # Replace with dynamic recipient(s)
+            recipient_list = ["pakshay@stratapps.com","sudhir.nambiar@stratapps.com"]  # Replace with dynamic recipient(s)
             
             try:
                 send_mail(
@@ -62,7 +62,8 @@ class OrchestrationLayer():
                     fail_silently=False,
                 )
                 print("Email notification sent to Human Agent.")
-            except:
+            except Exception as e:
+                print(f"Error sending email notification: {str(e)}")
                 pass
             
     def get_unresolved_incidents(self):
@@ -89,7 +90,7 @@ class OrchestrationLayer():
             
             # Use the higher confidence score between time and solution predictions
             confidence_score = max(filter(None, [time_confidence, solution_confidence])) if any([time_confidence, solution_confidence]) else None
-            incident.confidence_score = confidence_score *100
+            incident.confidence_score = confidence_score * 100
 
             if recommended_solution == "Human Intervention Needed" or (confidence_score and confidence_score < 0.6):
                 incident.human_intervention_needed = True
@@ -122,7 +123,7 @@ class OrchestrationLayer():
             print(f"Error in map_incident_to_agent: {str(e)}")
             return 'human'  # Default to human agent in case of errors
 
-    def safe_lower(self,value):
+    def safe_lower(self, value):
         return value.lower() if value else ""
 
     def dispatch_incident(self, incident):
@@ -183,12 +184,22 @@ class OrchestrationLayer():
             )
             print(f"Dispatched incident {incident.title} to {agent_type} agent (Confidence: {confidence_score})")
             print(f"Task data sent to queue: {task_data}")  # Debug log
-
+            if not agent_type == 'human':
+                self.agents[agent_type].process_task(task_data)
             return agent_type
         except Exception as e:
             print(f"Error in dispatch_incident: {str(e)}")
             return str(e)
-        
+
+    def process_task(self, task_data):
+        """Process the task based on the agent type."""
+        agent_type = task_data.get('agent_type')
+        if agent_type in self.agents:
+            agent = self.agents[agent_type]
+            agent.process_task(task_data)
+        else:
+            print(f"No agent found for type: {agent_type}")
+
     def process_unresolved_incidents(self):
         """Fetch and dispatch unresolved incidents."""
         incidents = self.get_unresolved_incidents()
@@ -213,6 +224,7 @@ class OrchestrationLayer():
                 except Exception as e:
                     print(f"Error updating log entry: {str(e)}")
             
+            self.process_task(task_data)
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except json.JSONDecodeError as e:
             print(f"Error decoding message: {str(e)}")

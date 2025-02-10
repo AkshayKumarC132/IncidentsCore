@@ -3,20 +3,21 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from core.management.django_model.model import IncidentLog
 from django.utils import timezone
+from incidentmanagement import settings
 
 
 class HumanAgent:
     def __init__(self):
         self.email_host = 'smtp.gmail.com'
         self.email_port = 587
-        self.email_user = 'your_email@example.com'
-        self.email_password = 'your_password'
+        self.email_user = settings.EMAIL_HOST_USER
+        self.email_password = settings.EMAIL_HOST_PASSWORD
 
     def send_email_notification(self, incident_details):
         """Send an email notification for human intervention."""
         msg = MIMEMultipart()
         msg['From'] = self.email_user
-        msg['To'] = 'support_team@example.com'
+        msg['To'] = settings.EMAIL_HOST_USER
         msg['Subject'] = f"Human Intervention Needed for Incident {incident_details['incident_id']}"
 
         body = f"""\
@@ -25,6 +26,12 @@ class HumanAgent:
         Description: {incident_details['description']}
         Severity: {incident_details['severity']}
         Task: {incident_details['task_description']}
+
+        Next Steps:
+        1. Review the incident details above.
+        2. Assess the situation and decide on the appropriate intervention.
+        3. Take necessary actions as per the established protocols.
+        4. Update the incident log with actions taken and resolution status.
         """
 
         msg.attach(MIMEText(body, 'plain'))

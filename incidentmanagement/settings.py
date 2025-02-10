@@ -451,3 +451,11 @@ TestHaloPSACredentialsViaURL = "https://xamplify.halopsa.com/auth/token"
 
 APPEND_SLASH = False
 SECURE_CROSS_ORIGIN_OPENER_POLICY = None
+
+# Email Configrations
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_USE_TLS = True
+EMAIL_PORT = 587
+EMAIL_HOST_USER = 'pakshay@stratapps.com' # Add Authorized Email
+EMAIL_HOST_PASSWORD = 'AKShay@stratapps' #Add Authorized Password
