@@ -51,7 +51,7 @@ class OrchestrationLayer():
             Thank you,
             Automated Incident Response System
             """
-            recipient_list = ["pakshay@stratapps.com","sudhir.nambiar@stratapps.com"]  # Replace with dynamic recipient(s)
+            recipient_list = ["pakshay@stratapps.com",]  # Replace with dynamic recipient(s)
             
             try:
                 send_mail(
@@ -126,7 +126,10 @@ class OrchestrationLayer():
     def safe_lower(self, value):
         return value.lower() if value else ""
 
-    def dispatch_incident(self, incident):
+    def dispatch_incident(self, incident, recipient=None):
+        # Process the incident and notify recipients
+        notified_users = recipient if recipient else []
+        print("Notified users:",notified_users)
         try:
             """Dispatch the incident to the appropriate agent and log the action."""
             agent_type = self.map_incident_to_agent(incident)
@@ -185,7 +188,7 @@ class OrchestrationLayer():
             print(f"Dispatched incident {incident.title} to {agent_type} agent (Confidence: {confidence_score})")
             print(f"Task data sent to queue: {task_data}")  # Debug log
             if not agent_type == 'human':
-                self.agents[agent_type].process_task(task_data)
+                self.agents[agent_type].process_task(task_data,notified_users)
             return agent_type
         except Exception as e:
             print(f"Error in dispatch_incident: {str(e)}")

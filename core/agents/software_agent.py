@@ -7,6 +7,8 @@ from django.core.mail import send_mail
 import platform
 import os
 from incidentmanagement import settings
+from django.core.mail import EmailMessage
+from rest_framework.response import Response
 
 class SoftwareAgent:
     def __init__(self, queue_name='task_queue'):
@@ -39,7 +41,7 @@ class SoftwareAgent:
                 return False
         raise NotImplementedError("Software update is not supported on Windows")
 
-    def process_task(self, task_data):
+    def process_task(self, task_data, recipient_email_list):
         print(f"Processing task: {task_data['task_description']} for incident {task_data['incident_id']}")
 
         incident_id = task_data['incident_id']
@@ -111,17 +113,24 @@ class SoftwareAgent:
 
         Incident Status: {'Resolved' if resolved else 'Pending Resolution'}
         """
+
+        # **Concatenating the email lists**
+        default_recipients = settings.DEFAULT_RECIPIENTS
+        recipient_list = list(set(default_recipients + recipient_email_list))  # Remove duplicates
+        print("Recipient list:",recipient_list)
+        email = EmailMessage(
+            subject=email_subject,
+            body=email_body,
+            from_email=settings.EMAIL_HOST_USER,
+            to=settings.DEFAULT_RECIPIENTS,  # Send to a generic recipient (optional)
+            bcc=recipient_list,  # Actual recipients
+        )
         try:
-            send_mail(
-                subject=email_subject,
-                message=email_body,
-                from_email = settings.EMAIL_HOST_USER,
-                recipient_list=["pakshay@stratapps.com","sudhir.nambiar@stratapps.com"],
-                fail_silently=False,
-            )
+            email.send(fail_silently=False)
+            print(f"Email sent successfully.")
         except Exception as e:
-            print(f"Error sending email notification: {str(e)}")
-            raise
+            print(f"Error sending email: {str(e)}")
+            return Response({"error": f"Error sending email: {str(e)}"}, status=500)
 
         print(f"Email notification sent for Incident ID {incident_id}.")
 

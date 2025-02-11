@@ -459,3 +459,4 @@ EMAIL_USE_TLS = True
 EMAIL_PORT = 587
 EMAIL_HOST_USER = 'pakshay@stratapps.com' # Add Authorized Email
 EMAIL_HOST_PASSWORD = 'AKShay@stratapps' #Add Authorized Password
+DEFAULT_RECIPIENTS = ["pakshay@stratapps.com","sudhir.nambiar@stratapps.com"]

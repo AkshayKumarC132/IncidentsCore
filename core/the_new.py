@@ -6,7 +6,6 @@ from django.views.decorators.csrf import csrf_exempt
 from pytz import utc
 from .serializers import *
 from .models import *
-from rest_framework import status
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
 from rest_framework.views import APIView
@@ -38,6 +37,9 @@ import pytesseract
 from django.db.models import Q
 from datetime import timedelta  # Add this import at the top of the file
 import joblib
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+
 
 # Get the current operating system
 os_name = os.name
@@ -557,6 +559,23 @@ class RunOrchestrationView(APIView):
             user_profile = user['user'] 
         else:
             return Response({'message':user['error']},status=status.HTTP_400_BAD_REQUEST)
+
+        # Get email list from request body
+        email_list = request.data.get('emails', [])
+        if not isinstance(email_list, list) or not email_list:
+            return Response({"error": "A valid list of email IDs is required"}, status=status.HTTP_400_BAD_REQUEST)
+        print(email_list)
+        # Validate email addresses
+        invalid_emails = []
+        for email in email_list:
+            try:
+                validate_email(email)
+            except ValidationError:
+                invalid_emails.append(email)
+
+        if invalid_emails:
+            return Response({"error": f"Invalid email(s): {', '.join(invalid_emails)}"}, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
             # Fetch the incident by ID
             incident = Incident.objects.get(id=incident_id)
@@ -566,7 +585,7 @@ class RunOrchestrationView(APIView):
                 orchestrator = OrchestrationLayer()
             except Exception as e :
                 return Response({'message':str(e)})
-            agent_name = orchestrator.dispatch_incident(incident)
+            agent_name = orchestrator.dispatch_incident(incident, email_list)
             # orchestrator.start_listening()
             return Response({"message": "Incident {} dispatched successfully to {}".format(incident.title, agent_name)}, status=status.HTTP_200_OK)
 
